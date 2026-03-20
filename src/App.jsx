@@ -138,7 +138,15 @@ export default function App() {
   const [biopsia, setBiopsia] = useState(null);
   const [confirmed, setConfirmed] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 480);
   const chatRef = useRef(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 480px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     if (chatRef.current) {
@@ -189,10 +197,13 @@ export default function App() {
 
       {/* PHONE FRAME */}
       <div style={{
-        width: 375, maxWidth: "100%", height: 780, background: GRAY_BG,
-        borderRadius: 32, overflow: "hidden", display: "flex", flexDirection: "column",
-        boxShadow: "0 8px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
-        border: "6px solid #1a1a1a",
+        width: isMobile ? "100%" : 375,
+        height: isMobile ? "100dvh" : 780,
+        background: GRAY_BG,
+        borderRadius: isMobile ? 0 : 32,
+        overflow: "hidden", display: "flex", flexDirection: "column",
+        boxShadow: isMobile ? "none" : "0 8px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+        border: isMobile ? "none" : "6px solid #1a1a1a",
       }}>
 
         {/* HEADER */}
@@ -221,7 +232,7 @@ export default function App() {
           {step === 0 && !scanning && (
             <BotMessage>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                {"Ol\u00E1, Dr. Daniela! Escaneie o cart\u00E3o SUS do paciente para come\u00E7ar o registro."}
+                {"Ol\u00E1, Dra. Daniela! Escaneie o cart\u00E3o SUS do paciente para come\u00E7ar o registro."}
               </div>
             </BotMessage>
           )}
@@ -479,11 +490,13 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, textAlign: "center", maxWidth: 375 }}>
-        <div style={{ fontSize: 12, color: GRAY_TEXT, lineHeight: 1.6 }}>
-          {"Prot\u00F3tipo interativo \u2022 Toque nos bot\u00F5es para simular o fluxo"}
+      {!isMobile && (
+        <div style={{ marginTop: 16, textAlign: "center", maxWidth: 375 }}>
+          <div style={{ fontSize: 12, color: GRAY_TEXT, lineHeight: 1.6 }}>
+            {"Prot\u00F3tipo interativo \u2022 Toque nos bot\u00F5es para simular o fluxo"}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
