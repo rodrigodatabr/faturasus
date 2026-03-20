@@ -121,6 +121,124 @@ function WaveformBars() {
   );
 }
 
+function CameraScanner({ onSuccess, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [flash, setFlash] = useState(false);
+  const [camError, setCamError] = useState(false);
+
+  useEffect(() => {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then((s) => {
+        streamRef.current = s;
+        if (videoRef.current) videoRef.current.srcObject = s;
+        const t = setTimeout(() => {
+          setFlash(true);
+          setTimeout(() => {
+            s.getTracks().forEach((t) => t.stop());
+            onSuccess();
+          }, 350);
+        }, 2200);
+        return () => clearTimeout(t);
+      })
+      .catch(() => setCamError(true));
+    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  function handleClose() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    onClose();
+  }
+
+  if (camError) {
+    return (
+      <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
+        <ScanLine size={40} color="#fff" />
+        <p style={{ color: "#fff", textAlign: "center", fontSize: 14 }}>Câmera não disponível neste dispositivo.</p>
+        <button onClick={handleClose} style={{ padding: "10px 24px", borderRadius: 20, border: "none", background: "#fff", fontWeight: 600, cursor: "pointer" }}>Voltar</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "#000", display: "flex", flexDirection: "column" }}>
+      {flash && <div style={{ position: "absolute", inset: 0, background: "#fff", zIndex: 30, animation: "flashOut 0.35s ease forwards" }} />}
+      <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+
+      {/* overlay escuro com janela de scan */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: "100%", height: "30%", background: "rgba(0,0,0,0.55)" }} />
+        <div style={{ display: "flex", width: "100%", height: 90 }}>
+          <div style={{ flex: 1, background: "rgba(0,0,0,0.55)" }} />
+          <div style={{ width: 280, position: "relative", overflow: "hidden", borderRadius: 6, outline: "2px solid rgba(255,255,255,0.8)" }}>
+            <div style={{ position: "absolute", left: 0, right: 0, height: 2, background: "#00E676", boxShadow: "0 0 8px #00E676", animation: "scanLine 1.4s ease-in-out infinite alternate" }} />
+          </div>
+          <div style={{ flex: 1, background: "rgba(0,0,0,0.55)" }} />
+        </div>
+        <div style={{ width: "100%", flex: 1, background: "rgba(0,0,0,0.55)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16, gap: 8 }}>
+          <span style={{ color: "#fff", fontSize: 13 }}>Aponte para o código de barras do cartão</span>
+        </div>
+      </div>
+
+      <button onClick={handleClose} style={{ position: "absolute", top: 14, right: 14, background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", padding: "7px 16px", borderRadius: 20, cursor: "pointer", fontSize: 13 }}>
+        Cancelar
+      </button>
+    </div>
+  );
+}
+
+function InputModal({ mode, onSuccess, onClose }) {
+  const [value, setValue] = useState("");
+  const isCpf = mode === "cpf";
+  const maxRaw = isCpf ? 11 : 15;
+
+  function formatValue(raw) {
+    const d = raw.replace(/\D/g, "").slice(0, maxRaw);
+    if (isCpf) {
+      return d.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, (_, a, b, c, e) =>
+        [a, b, c].filter(Boolean).join(".") + (e ? `-${e}` : "")
+      );
+    }
+    return d.replace(/(\d{3})(\d{4})(\d{4})(\d{0,4})/, (_, a, b, c, e) =>
+      [a, b, c, e].filter(Boolean).join(" ")
+    );
+  }
+
+  const raw = value.replace(/\D/g, "");
+  const ready = raw.length === maxRaw;
+
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: 20, background: "rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 320 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: BLUE, marginBottom: 16 }}>
+          {isCpf ? "Digite o CPF do paciente" : "Digite o CNS do paciente"}
+        </div>
+        <input
+          autoFocus
+          type="tel"
+          inputMode="numeric"
+          placeholder={isCpf ? "000.000.000-00" : "000 0000 0000 0000"}
+          value={value}
+          onChange={(e) => setValue(formatValue(e.target.value))}
+          style={{ width: "100%", height: 44, borderRadius: 10, border: `1.5px solid ${ready ? GREEN : "#DDD"}`, padding: "0 14px", fontSize: 18, fontFamily: "monospace", outline: "none", boxSizing: "border-box", letterSpacing: 1 }}
+        />
+        <div style={{ fontSize: 11, color: GRAY_TEXT, marginTop: 6 }}>
+          {isCpf ? "11 dígitos" : "15 dígitos"} — {raw.length}/{maxRaw}
+        </div>
+        <button
+          onClick={() => ready && onSuccess()}
+          style={{ marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: ready ? GREEN : "#E0E0E0", color: ready ? "#fff" : "#999", fontWeight: 700, fontSize: 14, cursor: ready ? "pointer" : "default", transition: "all 0.2s" }}
+        >
+          Confirmar
+        </button>
+        <button onClick={onClose} style={{ marginTop: 8, width: "100%", padding: "10px 0", borderRadius: 10, border: `1px solid #DDD`, background: "#fff", color: GRAY_TEXT, fontSize: 13, cursor: "pointer" }}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ icon, value, label, bgColor, color }) {
   return (
     <div style={{ flex: 1, background: bgColor, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
@@ -139,6 +257,8 @@ export default function App() {
   const [confirmed, setConfirmed] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 480);
+  const [showCamera, setShowCamera] = useState(false);
+  const [inputMode, setInputMode] = useState(null); // 'cpf' | 'cns'
   const chatRef = useRef(null);
 
   useEffect(() => {
@@ -156,8 +276,19 @@ export default function App() {
 
   function handleScan() {
     if (step > 0 || scanning) return;
+    setShowCamera(true);
+  }
+
+  function handleScanSuccess() {
+    setShowCamera(false);
     setScanning(true);
     setTimeout(() => { setScanning(false); setStep(1); }, 1500);
+  }
+
+  function handleInputSuccess() {
+    setInputMode(null);
+    setScanning(true);
+    setTimeout(() => { setScanning(false); setStep(1); }, 1200);
   }
 
   function handleMic() {
@@ -190,6 +321,8 @@ export default function App() {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
         @keyframes rec { 0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.4); } 50% { box-shadow: 0 0 0 12px rgba(192,57,43,0); } }
+        @keyframes scanLine { from { top: 5%; } to { top: 95%; } }
+        @keyframes flashOut { from { opacity: 0.85; } to { opacity: 0; } }
         .typing-dot { width: 6px; height: 6px; background: #999; border-radius: 50%; animation: pulse 1s ease-in-out infinite; display: inline-block; }
         .action-btn { transition: all 0.15s ease; }
         .action-btn:active { transform: scale(0.95); }
@@ -204,7 +337,10 @@ export default function App() {
         overflow: "hidden", display: "flex", flexDirection: "column",
         boxShadow: isMobile ? "none" : "0 8px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
         border: isMobile ? "none" : "6px solid #1a1a1a",
+        position: "relative",
       }}>
+        {showCamera && <CameraScanner onSuccess={handleScanSuccess} onClose={() => setShowCamera(false)} />}
+        {inputMode && <InputModal mode={inputMode} onSuccess={handleInputSuccess} onClose={() => setInputMode(null)} />}
 
         {/* HEADER */}
         <div style={{ height: 44, background: BLUE, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -442,7 +578,7 @@ export default function App() {
         </div>
 
         {/* MAIN ACTION BUTTONS */}
-        <div style={{ display: "flex", gap: 10, padding: "6px 12px 18px", background: "#fff", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 10, padding: "6px 12px 0", background: "#fff", flexShrink: 0 }}>
           <button
             className="action-btn"
             onClick={handleScan}
@@ -488,6 +624,18 @@ export default function App() {
             </span>
           </button>
         </div>
+        {/* FALLBACK ID OPTIONS */}
+        {step === 0 && !scanning && (
+          <div style={{ background: "#fff", padding: "6px 12px 14px", display: "flex", justifyContent: "center", gap: 24, flexShrink: 0 }}>
+            <button onClick={() => setInputMode("cpf")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+              Digitar CPF
+            </button>
+            <button onClick={() => setInputMode("cns")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+              Digitar CNS
+            </button>
+          </div>
+        )}
+        {step > 0 && <div style={{ background: "#fff", height: 14, flexShrink: 0 }} />}
       </div>
 
       {!isMobile && (
