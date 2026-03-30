@@ -6,5 +6,6 @@ pydantic-settings>=2.7,<3
 alembic>=1.14,<2
 pgvector>=0.3,<1
 openai>=1.0,<2
+python-multipart>=0.0.9,<1      # upload de áudio no endpoint /transcricao
 dbc-to-dbf>=0.1                # leitura de .dbc DATASUS (HB por UF) — algoritmo blast puro Python
 dbfread>=2.0,<3                # leitura de .dbf após descompressão
