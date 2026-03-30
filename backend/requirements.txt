@@ -1,0 +1,10 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+sqlalchemy[asyncio]>=2.0,<3
+asyncpg>=0.30,<1
+pydantic-settings>=2.7,<3
+alembic>=1.14,<2
+pgvector>=0.3,<1
+openai>=1.0,<2
+dbc-to-dbf>=0.1                # leitura de .dbc DATASUS (HB por UF) — algoritmo blast puro Python
+dbfread>=2.0,<3                # leitura de .dbf após descompressão

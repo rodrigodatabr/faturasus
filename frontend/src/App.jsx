@@ -259,7 +259,11 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 480);
   const [showCamera, setShowCamera] = useState(false);
   const [inputMode, setInputMode] = useState(null); // 'cpf' | 'cns'
+  const [transcricaoTexto, setTranscricaoTexto] = useState('');
+  const [transcricaoErro, setTranscricaoErro] = useState(null);
   const chatRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
@@ -291,10 +295,43 @@ export default function App() {
     setTimeout(() => { setScanning(false); setStep(1); }, 1200);
   }
 
-  function handleMic() {
+  async function handleMic() {
     if (step !== 1) return;
+    if (recording) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    setTranscricaoErro(null);
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setTranscricaoErro('Permissão para microfone negada.');
+      return;
+    }
+    const recorder = new MediaRecorder(stream);
+    chunksRef.current = [];
+    recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+      const form = new FormData();
+      form.append('audio', blob, 'audio.webm');
+      try {
+        const res = await fetch('/transcricao', { method: 'POST', body: form });
+        if (!res.ok) throw new Error(await res.text());
+        const { texto } = await res.json();
+        setTranscricaoTexto(texto);
+        setStep(2);
+      } catch {
+        setTranscricaoErro('Falha na transcrição. Tente novamente.');
+      } finally {
+        setRecording(false);
+      }
+    };
+    mediaRecorderRef.current = recorder;
+    recorder.start();
     setRecording(true);
-    setTimeout(() => { setRecording(false); setStep(2); }, 2000);
   }
 
   function handleBiopsia(val) {
@@ -310,6 +347,7 @@ export default function App() {
   function handleReset() {
     setStep(0); setScanning(false); setRecording(false);
     setBiopsia(null); setConfirmed(false); setShowStats(false);
+    setTranscricaoTexto(''); setTranscricaoErro(null);
   }
 
   const procedureComplete = step >= 3 && biopsia !== null;
@@ -402,9 +440,15 @@ export default function App() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Mic size={16} />
                 <WaveformBars />
-                <span style={{ fontSize: 12 }}>Gravando...</span>
+                <span style={{ fontSize: 12 }}>Gravando... (toque novamente para parar)</span>
               </div>
             </UserMessage>
+          )}
+
+          {transcricaoErro && (
+            <BotMessage>
+              <span style={{ color: "#c0392b", fontSize: 13 }}>{transcricaoErro}</span>
+            </BotMessage>
           )}
 
           {step >= 2 && (
@@ -412,7 +456,7 @@ export default function App() {
               <UserMessage>
                 <div style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                   <Mic size={14} />
-                  <em>{"\u201CFiz uma videocolonoscopia na paciente, CID K63.5\u201D"}</em>
+                  <em>"{transcricaoTexto}"</em>
                 </div>
               </UserMessage>
               <BotMessage>

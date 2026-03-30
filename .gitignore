@@ -23,3 +23,21 @@ dist-ssr
 *.sln
 *.sw?
 node_modules
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Variáveis de ambiente — NUNCA commitar
+.env
+backend/.env
+
+# Dados brutos externos — não versionar (grandes, gerados por cron)
+backend/data/
+docs/*.exe
+docs/*.dbf
+docs/sigtap_202603/
