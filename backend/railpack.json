@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "packages": {
+    "node": "22"
+  },
+  "steps": {
+    "frontend-build": {
+      "commands": [
+        "cd /app/frontend && npm install && npm run build"
+      ]
+    },
+    "build": {
+      "inputs": [{"step": "frontend-build"}],
+      "commands": ["..."]
+    }
+  }
+}
