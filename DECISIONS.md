@@ -95,6 +95,20 @@ Antes de mudar qualquer coisa coberta aqui, leia a justificativa — ela pode mu
 
 ---
 
+## DEC-010 — Deploy: monorepo + serviço único no protótipo; separar frontend/backend na v2
+
+**O que:** no protótipo, frontend (React/Vite) e backend (FastAPI) vivem no mesmo repo e são servidos pelo mesmo serviço Railway. O FastAPI serve `frontend/dist/` via StaticFiles. O build é feito por um Dockerfile multistage na raiz: stage Node 22 builda o frontend, stage Python 3.12 instala as dependências e copia o dist.
+
+**Por quê:** reduz overhead operacional na fase de protótipo (um serviço, um domínio, um deploy). O Railway não suporta builds multi-linguagem nativamente via Railpack sem configuração manual que se mostrou não-confiável (railpack.json ignorado quando Root Directory aponta para `backend/`). O Dockerfile é determinístico e imune a mudanças de versão do Railpack.
+
+**Quando separar:** quando o produto tiver usuários reais ou deploys frequentes do frontend independentes do backend. Mover o frontend para Vercel ou Cloudflare Pages (CDN global, grátis) e remover o bloco StaticFiles do `main.py`. A arquitetura atual já suporta isso cirurgicamente.
+
+**O que não fazer:** tentar configurar build multi-linguagem via railpack.json/railway.json na raiz — foi tentado e não funciona com Root Directory diferente da raiz do repo.
+
+**Referência:** `Dockerfile`, `backend/app/main.py` (bloco StaticFiles), `roadmap.md` passo 2.
+
+---
+
 ## DEC-008 — Modelo multi-tenant hierárquico: profissional → unidade → prefeitura
 
 **O que:** cada profissional de saúde terá uma conta vinculada ao seu CNS. A unidade de saúde (CNES) terá acesso ao dashboard de produção total da unidade, com capacidade de edição. A prefeitura/SMS visualizará a produção consolidada de todas as unidades antes de fechar e enviar o arquivo BPA ao Ministério da Saúde.
