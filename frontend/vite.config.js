@@ -7,6 +7,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/transcricao': 'http://localhost:8001',
+      '/busca': 'http://localhost:8001',
+      '/health': 'http://localhost:8001',
     },
   },
 })

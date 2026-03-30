@@ -17,12 +17,6 @@ const DEMO_PATIENT = {
   municipio: "Iguatama - MG",
 };
 
-const DEMO_PROCEDURE = {
-  descricao: "Videocolonoscopia",
-  codigo: "02.09.01.003-7",
-  cid: "K63.5",
-  valor: "R$ 145,43",
-};
 
 function BotMessage({ children, typing, delay = 0 }) {
   const [visible, setVisible] = useState(delay === 0);
@@ -261,6 +255,8 @@ export default function App() {
   const [inputMode, setInputMode] = useState(null); // 'cpf' | 'cns'
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
   const [transcricaoErro, setTranscricaoErro] = useState(null);
+  const [procedure, setProcedure] = useState(null);
+  const [procedureErro, setProcedureErro] = useState(null);
   const chatRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -322,6 +318,24 @@ export default function App() {
         if (!res.ok) throw new Error(await res.text());
         const { texto } = await res.json();
         setTranscricaoTexto(texto);
+        setProcedureErro(null);
+        try {
+          const buscaRes = await fetch(
+            `/busca/procedimentos?q=${encodeURIComponent(texto)}&competencia=202603`
+          );
+          if (!buscaRes.ok) throw new Error(await buscaRes.text());
+          const resultados = await buscaRes.json();
+          if (resultados.length === 0) throw new Error('Nenhum procedimento encontrado.');
+          const top = resultados[0];
+          const centavos = top.vl_sa ?? top.vl_sp ?? 0;
+          setProcedure({
+            descricao: top.no_procedimento,
+            codigo: top.co_procedimento,
+            valor: `R$ ${(centavos / 100).toFixed(2).replace('.', ',')}`,
+          });
+        } catch {
+          setProcedureErro('Falha ao buscar procedimento. Tente novamente.');
+        }
         setStep(2);
       } catch {
         setTranscricaoErro('Falha na transcrição. Tente novamente.');
@@ -348,6 +362,7 @@ export default function App() {
     setStep(0); setScanning(false); setRecording(false);
     setBiopsia(null); setConfirmed(false); setShowStats(false);
     setTranscricaoTexto(''); setTranscricaoErro(null);
+    setProcedure(null); setProcedureErro(null);
   }
 
   const procedureComplete = step >= 3 && biopsia !== null;
@@ -447,7 +462,13 @@ export default function App() {
 
           {transcricaoErro && (
             <BotMessage>
-              <span style={{ color: "#c0392b", fontSize: 13 }}>{transcricaoErro}</span>
+              <span style={{ color: RED, fontSize: 13 }}>{transcricaoErro}</span>
+            </BotMessage>
+          )}
+
+          {procedureErro && (
+            <BotMessage>
+              <span style={{ color: RED, fontSize: 13 }}>{procedureErro}</span>
             </BotMessage>
           )}
 
@@ -463,10 +484,9 @@ export default function App() {
                 <div style={{ fontSize: 13, marginBottom: 8, fontWeight: 600, color: BLUE }}>
                   Procedimento identificado na SIGTAP
                 </div>
-                <CheckItem label="Procedimento" value={DEMO_PROCEDURE.descricao} />
-                <CheckItem label={"C\u00F3digo"} value={DEMO_PROCEDURE.codigo} />
-                <CheckItem label="CID" value={`${DEMO_PROCEDURE.cid} \u2014 P\u00F3lipo do c\u00F3lon`} />
-                <CheckItem label="Valor SIGTAP" value={DEMO_PROCEDURE.valor} />
+                <CheckItem label="Procedimento" value={procedure?.descricao ?? '…'} />
+                <CheckItem label={"C\u00F3digo"} value={procedure?.codigo ?? '…'} />
+                <CheckItem label="Valor SIGTAP" value={procedure?.valor ?? '…'} />
               </BotMessage>
               <BotMessage>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
@@ -511,11 +531,10 @@ export default function App() {
                   <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                     <div><strong>Paciente:</strong> {DEMO_PATIENT.nome}</div>
                     <div><strong>CNS:</strong> {DEMO_PATIENT.cns}</div>
-                    <div><strong>Procedimento:</strong> {DEMO_PROCEDURE.descricao} ({DEMO_PROCEDURE.codigo})</div>
+                    <div><strong>Procedimento:</strong> {procedure?.descricao} ({procedure?.codigo})</div>
                     {biopsia && <div><strong>Adicional:</strong> {"Bi\u00F3psia intestino grosso (02.01.01.031-0)"}</div>}
-                    <div><strong>CID:</strong> {DEMO_PROCEDURE.cid} {"\u2014 P\u00F3lipo do c\u00F3lon"}</div>
                     <div><strong>Data:</strong> 19/03/2026</div>
-                    <div><strong>Valor total:</strong> {biopsia ? "R$ 172,27" : DEMO_PROCEDURE.valor}</div>
+                    <div><strong>Valor total:</strong> {biopsia ? "R$ 172,27" : procedure?.valor}</div>
                   </div>
                 </div>
 

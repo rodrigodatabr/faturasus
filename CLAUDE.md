@@ -38,7 +38,9 @@ Assistente PWA de faturamento ambulatorial SUS — toda a produção ambulatoria
 │   │   ├── config.py      # Settings via pydantic-settings
 │   │   ├── db.py          # Engine async + sessionmaker (asyncpg)
 │   │   ├── routers/
-│   │   │   └── health.py  # GET /health
+│   │   │   ├── health.py      # GET /health
+│   │   │   ├── transcricao.py # POST /transcricao (Whisper)
+│   │   │   └── busca.py       # GET /busca/procedimentos (pgvector)
 │   │   ├── models/
 │   │   │   ├── __init__.py    # Re-exporta todos os models (Alembic + main.py)
 │   │   │   ├── sigtap.py      # 20 tabelas SIGTAP
@@ -49,6 +51,7 @@ Assistente PWA de faturamento ambulatorial SUS — toda a produção ambulatoria
 │   │   ├── ingest/
 │   │   │   ├── sigtap.py              # Ingestão BDSIA → 20 tabelas sigtap_* (UPSERT, lotes de 500)
 │   │   │   ├── cnes.py                # Ingestão SCNES → 4 tabelas cnes_* (filtro --municipios por IBGE 6 dígitos)
+│   │   │   ├── embeddings.py          # Indexação SIGTAP → embeddings_procedimentos (OpenAI, lotes de 100)
 │   │   │   └── test_sigtap_dry_run.py # Valida layouts localmente sem banco
 │   │   ├── schemas/       # Pydantic schemas (vazio por ora)
 │   │   └── services/      # Lógica de negócio (vazio por ora)
@@ -89,6 +92,7 @@ O protótipo frontend está hospedado na Railway:
 - ~~**Banco PostgreSQL**~~ — 28 tabelas criadas (SIGTAP + CNES + operacional); migration aplicada no Railway; pgvector ativo
 - ~~**Script de ingestão SIGTAP**~~ — `app/ingest/sigtap.py`; executado contra Railway (competência 202603): 20/20 tabelas OK, 4980 procedimentos, 194720 rl_proc_ocupacao
 - ~~**Script de ingestão SCNES**~~ — `app/ingest/cnes.py`; filtro `--municipios` por código IBGE; ingerido para Naviraí-MS, Três Pontas-MG, Esteio-RS (903 est., 5.399 prof., 878 serv., 39 hab.)
+- ~~**Embeddings SIGTAP + busca semântica**~~ — `app/ingest/embeddings.py`; 4.980 procedimentos indexados localmente; migration `0002_ivfflat_embeddings` (IVFFlat); endpoint `GET /busca/procedimentos`. **Pendente no Railway:** rodar indexação e migration apontando para produção.
 - **Integração CADSUS v5** — SOAP real via barramento RNDS (sem cache persistente de pacientes; apenas cache volátil de sessão)
 - **Pipeline de registro** — Whisper → pgvector → Claude Haiku → validação anti-glosa
 - **Fontes de dados externas** — SIGTAP/BDSIA (cron diário), SCNES PF+HB (upload mensal), FPO (manual). Ver PRD §3.3
@@ -141,13 +145,13 @@ alembic revision --autogenerate -m "x"   # Gerar migration
 DATABASE_URL=             # PostgreSQL com asyncpg (obrigatória)
 CORS_ORIGINS=             # Lista JSON de origens (opcional)
 OPENAI_API_KEY=           # Whisper (transcrição) + embeddings
+ANTHROPIC_API_KEY=        # Claude Haiku (classificação SIGTAP) — opcional até o passo 5
 ```
 
 > **Nota de ambiente:** para rodar migrations/seeds localmente contra o Railway, usar a `DATABASE_PUBLIC_URL` (host `gondola.proxy.rlwy.net:29300`) com o IP direto `66.33.22.247:29300` caso o DNS local não resolva `*.rlwy.net`. O serviço `faturasus` no Railway usa a URL interna (`postgres.railway.internal:5432`).
 
 ### Futuras
 ```
-ANTHROPIC_API_KEY=        # Claude Haiku (classificação SIGTAP)
 CADSUS_CERTIFICATE=       # Certificado digital p/ barramento RNDS
 CADSUS_ENDPOINT=          # URL do serviço CADSUS v5
 JWT_SECRET=               # Auth
