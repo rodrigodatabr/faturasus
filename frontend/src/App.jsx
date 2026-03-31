@@ -320,21 +320,20 @@ export default function App() {
         setTranscricaoTexto(texto);
         setProcedureErro(null);
         try {
-          const buscaRes = await fetch(
-            `/busca/procedimentos?q=${encodeURIComponent(texto)}&competencia=202603`
-          );
-          if (!buscaRes.ok) throw new Error(await buscaRes.text());
-          const resultados = await buscaRes.json();
-          if (resultados.length === 0) throw new Error('Nenhum procedimento encontrado.');
-          const top = resultados[0];
-          const centavos = top.vl_sa ?? top.vl_sp ?? 0;
+          const classRes = await fetch('/classificar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ texto, competencia: '202603' }),
+          });
+          if (!classRes.ok) throw new Error(await classRes.text());
+          const { co_procedimento, no_procedimento, vl_total } = await classRes.json();
           setProcedure({
-            descricao: top.no_procedimento,
-            codigo: top.co_procedimento,
-            valor: `R$ ${(centavos / 100).toFixed(2).replace('.', ',')}`,
+            descricao: no_procedimento,
+            codigo: co_procedimento,
+            valor: `R$ ${(vl_total / 100).toFixed(2).replace('.', ',')}`,
           });
         } catch {
-          setProcedureErro('Falha ao buscar procedimento. Tente novamente.');
+          setProcedureErro('Falha ao classificar procedimento. Tente novamente.');
         }
         setStep(2);
       } catch {

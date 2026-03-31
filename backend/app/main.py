@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.db import engine
 import app.models  # noqa: F401 — registra todos os models em Base.metadata
-from app.routers import busca, health, transcricao
+from app.routers import busca, classificacao, health, transcricao
 
 logger = logging.getLogger("faturasus")
 
@@ -45,6 +45,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(transcricao.router)
 app.include_router(busca.router)
+app.include_router(classificacao.router)
 
 # Serve frontend/dist/ como static files (produção)
 # Registrado após os routers para que /health, /busca/* e /transcricao

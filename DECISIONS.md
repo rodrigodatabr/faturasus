@@ -51,13 +51,20 @@ Antes de mudar qualquer coisa coberta aqui, leia a justificativa — ela pode mu
 
 ## DEC-004 — Pipeline de classificação SIGTAP em duas etapas: pgvector → Claude Haiku
 
-**O que:** a classificação de procedimentos usa duas etapas — pgvector retorna os top-15 candidatos por similaridade semântica; Claude Haiku recebe esses 15 + contexto (CBO, CNES) e classifica o procedimento final.
+**O que:** a classificação de procedimentos usa **três etapas**:
+1. **Query expansion (Haiku):** o texto coloquial/transcrito é reformulado para terminologia técnica SIGTAP antes de ir ao pgvector. Ex: "gesso no braço" → "imobilização gessada fratura membro superior"; "Papa Nicolau" → "coleta citopatológica colo útero".
+2. **Retrieval (pgvector):** a query expandida gera embedding e busca os top-15 candidatos por similaridade semântica.
+3. **Classificação final (Haiku):** recebe o texto original + os 15 candidatos e escolhe o procedimento mais adequado.
 
-**Por quê:** enviar os 4.980+ procedimentos SIGTAP por requisição ao LLM seria proibitivamente caro e lento. O vetor filtra o espaço de busca para um conjunto gerenciável antes de acionar o LLM. O número 15 foi uma estimativa inicial — a hipótese é que o procedimento correto sempre estará nos top-15 candidatos semânticos, mas isso precisa ser validado empiricamente quando o pipeline for implementado.
+**Por quê da query expansion:** descoberto empiricamente no passo 4. Sem expansion, o recall@15 era zero para linguagem coloquial ("gesso no braço") e para erros de transcrição do Whisper ("Papa Nicolau" → pgvector retornava procedimentos de neonatal). Com a query expandida, o procedimento correto passou a aparecer nos top-5. Os embeddings foram gerados a partir de `no_procedimento` (nome técnico curto) — o gap semântico entre linguagem coloquial e nomenclatura SIGTAP é grande demais para o pgvector resolver sozinho.
 
-**Investigação pendente (implementação do passo 5):** medir recall@15 com casos reais (percentual de vezes em que o procedimento correto está nos top-15). Se o recall for insatisfatório, aumentar para top-20 ou top-30 antes de ajustar o prompt do Haiku.
+**Custo da query expansion:** +1 chamada ao Haiku por registro. Dobra o custo de API do Haiku, mas o pipeline passa a ser funcional. Ver estimativa atualizada no PRD §8.
 
-**O que não fazer:** mandar todos os procedimentos para o LLM por requisição. Fixar o threshold de 15 sem medir o recall.
+**Por quê do Haiku e não pgvector puro:** os embeddings foram gerados a partir de `no_procedimento` (nome técnico curto). A tabela `sigtap_descricoes` tem descrições longas (até 4000 chars) que poderiam melhorar o recall sem query expansion — uma melhoria futura se o custo de 2 chamadas Haiku/registro se mostrar alto em produção.
+
+**Investigação pendente:** medir recall@15 com casos reais depois da query expansion. Se ainda insatisfatório, aumentar para top-20/30 ou reindexar embeddings usando `sigtap_descricoes` em vez de `no_procedimento`.
+
+**O que não fazer:** mandar todos os procedimentos para o LLM por requisição. Fixar o threshold de 15 sem medir o recall. Remover a query expansion — ela é o que torna o pipeline funcional para linguagem coloquial.
 
 **Referência:** `prd_faturasus.md` § 2 "Embeddings + LLM (duas etapas)", `roadmap.md` passo 2 e 5.
 
