@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Mic, Check, X, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle, RotateCcw, Plus } from "lucide-react";
+import { Camera, Mic, Check, X, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle, RotateCcw, Plus, Hourglass } from "lucide-react";
 
 const BLUE = "#1B4F72";
 const BLUE_LIGHT = "#D6EAF8";
@@ -235,6 +235,8 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [scanning, setScanning] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [btnReady, setBtnReady] = useState(false); // botão inferior voltou ao microfone após confirmação
   const [confirmed, setConfirmed] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 480);
@@ -249,6 +251,8 @@ export default function App() {
   const chatRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const silenceTimerRef = useRef(null);
+  const analyserRef = useRef(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 480px)");
@@ -280,10 +284,15 @@ export default function App() {
     setTimeout(() => { setScanning(false); setStep(1); }, 1200);
   }
 
+  function stopRecording() {
+    clearInterval(silenceTimerRef.current);
+    mediaRecorderRef.current?.stop();
+  }
+
   async function handleMic() {
     if (step !== 1) return;
     if (recording) {
-      mediaRecorderRef.current?.stop();
+      stopRecording();
       return;
     }
     setTranscricaoErro(null);
@@ -294,11 +303,38 @@ export default function App() {
       setTranscricaoErro('Permissão para microfone negada.');
       return;
     }
+
+    // Detecção de silêncio via AnalyserNode
+    const audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+    const dataArray = new Uint8Array(analyser.fftSize);
+    let silenceStart = null;
+    const SILENCE_THRESHOLD = 10; // amplitude média abaixo disso = silêncio
+    const SILENCE_DURATION = 1800; // ms de silêncio para parar
+    silenceTimerRef.current = setInterval(() => {
+      analyser.getByteTimeDomainData(dataArray);
+      const avg = dataArray.reduce((s, v) => s + Math.abs(v - 128), 0) / dataArray.length;
+      if (avg < SILENCE_THRESHOLD) {
+        if (!silenceStart) silenceStart = Date.now();
+        else if (Date.now() - silenceStart > SILENCE_DURATION) stopRecording();
+      } else {
+        silenceStart = null;
+      }
+    }, 100);
+
     const recorder = new MediaRecorder(stream);
     chunksRef.current = [];
     recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
     recorder.onstop = async () => {
+      clearInterval(silenceTimerRef.current);
       stream.getTracks().forEach((t) => t.stop());
+      audioCtx.close();
+      setRecording(false);
+      setProcessing(true);
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
       const form = new FormData();
       form.append('audio', blob, 'audio.webm');
@@ -328,7 +364,7 @@ export default function App() {
       } catch {
         setTranscricaoErro('Falha na transcrição. Tente novamente.');
       } finally {
-        setRecording(false);
+        setProcessing(false);
       }
     };
     mediaRecorderRef.current = recorder;
@@ -338,6 +374,7 @@ export default function App() {
 
   function handleConfirm() {
     setConfirmed(true);
+    setTimeout(() => setBtnReady(true), 2000);
   }
 
   function handleConcluir() {
@@ -356,6 +393,8 @@ export default function App() {
     setProcedure(null);
     setTranscricaoTexto('');
     setConfirmed(false);
+    setBtnReady(false);
+    setProcessing(false);
     setShowStats(false);
     setTranscricaoErro(null);
     setProcedureErro(null);
@@ -363,14 +402,13 @@ export default function App() {
   }
 
   function handleReset() {
-    setStep(0); setScanning(false); setRecording(false);
-    setConfirmed(false); setShowStats(false);
+    setStep(0); setScanning(false); setRecording(false); setProcessing(false);
+    setConfirmed(false); setShowStats(false); setBtnReady(false);
     setTranscricaoTexto(''); setTranscricaoErro(null);
     setProcedure(null); setProcedureErro(null);
     setProcedures([]);
   }
 
-  const procedureComplete = confirmed;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 0, fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif" }}>
@@ -530,7 +568,7 @@ export default function App() {
                 <Check size={14} strokeWidth={3} /> {"Todas as valida\u00E7\u00F5es aprovadas"}
               </div>
               <div style={{ fontSize: 12, marginBottom: 10 }}>
-                <CheckItem label={"CBO compat\u00EDvel"} value={"Sim \u2014 Gastroenterologista"} />
+                <CheckItem label={"CBO compat\u00EDvel"} value="Sim" />
                 <CheckItem label="CNES habilitado" value="Sim" />
               </div>
 
@@ -591,7 +629,7 @@ export default function App() {
           {showStats && (
             <BotMessage>
               <div style={{ fontSize: 12, color: GRAY_TEXT, marginBottom: 6 }}>
-                Seu dia at\u00E9 agora:
+                Seu dia até agora:
               </div>
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <StatCard
@@ -611,17 +649,10 @@ export default function App() {
                 <StatCard
                   icon={<Clock size={16} color={BLUE} />}
                   value="18s"
-                  label={"Tempo m\u00E9dio"}
+                  label="Tempo médio"
                   bgColor={BLUE_LIGHT}
                   color={BLUE}
                 />
-              </div>
-              <div style={{ fontSize: 12, color: GRAY_TEXT, marginBottom: 4 }}>
-                {"\u00DAltimo: Maria Aparecida da Silva \u2014 Videocolonoscopia"}
-              </div>
-              <div style={{ fontSize: 11, color: "#B7950B", display: "flex", alignItems: "center", gap: 4, marginBottom: 8 }}>
-                <AlertCircle size={12} />
-                {"1 registro incompleto (falta CID). Toque para completar."}
               </div>
               <button
                 onClick={handleReset}
@@ -705,30 +736,50 @@ export default function App() {
             </div>
           </>
         ) : (
-          // Step >= 1: apenas botão de microfone centralizado (ou check se completo)
+          // Step >= 1: botão de microfone centralizado com estados: gravando / processando / ok→mic
           <div style={{ padding: "6px 12px 14px", background: "#fff", flexShrink: 0 }}>
-            <button
-              className="action-btn"
-              onClick={handleMic}
-              style={{
-                width: "100%", height: 80, borderRadius: 18, border: "none",
-                cursor: step === 1 ? "pointer" : "default",
-                background: recording ? "#FADBD8" : procedureComplete ? GREEN_LIGHT : step === 1 ? BLUE_LIGHT : "#F0F0F0",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-                animation: recording ? "rec 1.5s ease infinite" : "none",
-                opacity: step > 1 && !procedureComplete ? 0.65 : 1,
-              }}
-            >
-              {procedureComplete
-                ? <Check size={28} color={GREEN} strokeWidth={2.5} />
-                : recording
-                  ? <Circle size={28} color={RED} fill={RED} strokeWidth={0} />
-                  : <Mic size={28} color={step === 1 ? BLUE : "#999"} strokeWidth={1.8} />
+            {(() => {
+              // Após confirmação: 2s mostra "Procedimento OK", depois volta ao mic
+              if (confirmed && !btnReady) {
+                return (
+                  <button className="action-btn" style={{ width: "100%", height: 80, borderRadius: 18, border: "none", cursor: "default", background: GREEN_LIGHT, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Check size={28} color={GREEN} strokeWidth={2.5} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: GREEN }}>Procedimento OK</span>
+                  </button>
+                );
               }
-              <span style={{ fontSize: 13, fontWeight: 600, color: procedureComplete ? GREEN : recording ? RED : step === 1 ? BLUE : "#999" }}>
-                {procedureComplete ? "Procedimento OK" : recording ? "Gravando..." : "Gravar procedimento"}
-              </span>
-            </button>
+              if (confirmed && btnReady) {
+                return (
+                  <button className="action-btn" onClick={handleAddProcedure} style={{ width: "100%", height: 80, borderRadius: 18, border: "none", cursor: "pointer", background: BLUE_LIGHT, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, animation: "fadeIn 0.4s ease" }}>
+                    <Mic size={28} color={BLUE} strokeWidth={1.8} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: BLUE }}>Gravar procedimento</span>
+                  </button>
+                );
+              }
+              if (processing) {
+                return (
+                  <button className="action-btn" style={{ width: "100%", height: 80, borderRadius: 18, border: "none", cursor: "default", background: "#FFF8E7", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Loader size={28} color="#B7950B" strokeWidth={2} style={{ animation: "pulse 1s ease infinite" }} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#B7950B" }}>Processando...</span>
+                  </button>
+                );
+              }
+              if (recording) {
+                return (
+                  <button className="action-btn" onClick={stopRecording} style={{ width: "100%", height: 80, borderRadius: 18, border: "none", cursor: "pointer", background: "#FADBD8", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, animation: "rec 1.5s ease infinite" }}>
+                    <Circle size={28} color={RED} fill={RED} strokeWidth={0} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: RED }}>Gravando...</span>
+                  </button>
+                );
+              }
+              // step 1, idle
+              return (
+                <button className="action-btn" onClick={handleMic} style={{ width: "100%", height: 80, borderRadius: 18, border: "none", cursor: step === 1 ? "pointer" : "default", background: step === 1 ? BLUE_LIGHT : "#F0F0F0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, opacity: step > 1 ? 0.5 : 1 }}>
+                  <Mic size={28} color={step === 1 ? BLUE : "#999"} strokeWidth={1.8} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: step === 1 ? BLUE : "#999" }}>Gravar procedimento</span>
+                </button>
+              );
+            })()}
           </div>
         )}
 
