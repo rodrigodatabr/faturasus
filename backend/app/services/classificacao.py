@@ -1,7 +1,8 @@
-"""Serviço de classificação de procedimentos SIGTAP: pgvector top-15 → Claude Haiku."""
+"""Serviço de classificação de procedimentos SIGTAP: hybrid search (pgvector + substring) → Claude Haiku."""
 
 import json
 import logging
+import unicodedata
 
 import anthropic
 from fastapi import HTTPException
@@ -15,7 +16,14 @@ logger = logging.getLogger("faturasus")
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 HAIKU_MODEL = "claude-haiku-4-5"
-TOP_K = 15
+TOP_K = 30
+# Threshold de distância coseno acima do qual ativamos o fallback substring.
+# Distância coseno: 0 = idêntico, 2 = oposto. >0.35 indica confiança baixa.
+DIST_THRESHOLD_FALLBACK = 0.35
+# Comprimento mínimo de token para usar no fallback substring
+MIN_TOKEN_LEN = 5
+# Tamanho máximo da descrição do procedimento passada ao Haiku (chars)
+DS_PROC_MAX_CHARS = 80
 
 _openai = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 # Instanciado de forma lazy em _get_haiku() para garantir que a chave já foi carregada
@@ -30,46 +38,96 @@ def _get_haiku() -> anthropic.AsyncAnthropic:
 
 
 def _extrair_json(raw: str) -> str:
-    """Remove markdown code fence se presente (Haiku às vezes envolve a resposta)."""
+    """Extrai o primeiro objeto JSON da resposta, ignorando code fences e texto extra."""
     s = raw.strip()
+    # Remove code fence se presente
     if s.startswith("```"):
         lines = s.splitlines()
         inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
-        return "\n".join(inner).strip()
-    return s
+        s = "\n".join(inner).strip()
+    # Pega apenas o trecho entre o primeiro { e o } correspondente
+    start = s.find("{")
+    if start == -1:
+        return s
+    depth = 0
+    for i, ch in enumerate(s[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return s[start : i + 1]
+    return s[start:]
+
+
+def _normalizar(texto: str) -> str:
+    """Lowercase + remove acentos para comparação substring."""
+    nfkd = unicodedata.normalize("NFKD", texto.lower())
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def _tokens_relevantes(texto: str) -> list[str]:
+    """Extrai tokens do texto para busca substring.
+
+    Para cada token >= MIN_TOKEN_LEN: tenta o token original lowercase e o normalizado
+    (sem acento). Para tokens longos (>= 9 chars), adiciona também um prefixo de 6 chars
+    da forma normalizada — cobre casos onde o acento aparece na sílaba final
+    (ex: "nebulização" → prefixo "nebuli" encontra "NEBULIZAÇÃO").
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+
+    for raw in texto.lower().split():
+        norm = _normalizar(raw)
+        candidates = [raw, norm]
+        if len(norm) >= 9:
+            candidates.append(norm[:6])  # prefixo pré-acento
+        for tok in candidates:
+            if len(tok) >= MIN_TOKEN_LEN and tok not in seen:
+                seen.add(tok)
+                result.append(tok)
+    return result
+
 
 _SYSTEM_EXPAND = """\
 Você é um especialista em terminologia médica e no sistema SIGTAP do SUS brasileiro.
 Dado um texto coloquial ou com possíveis erros de transcrição de voz, reescreva-o
 usando terminologia técnica médica compatível com os nomes de procedimentos do SIGTAP.
-Corrija erros fonéticos comuns (ex: "papa nicolau" → "coleta citopatológica colo útero",
-"gesso no braço" → "imobilização gessada fratura membro superior").
+
+Regras:
+- Se o texto já usa terminologia técnica SIGTAP, retorne-o com ajustes mínimos ou sem alteração.
+- O PROCEDIMENTO clínico principal tem prioridade sobre a VIA DE ADMINISTRAÇÃO.
+  "oral", "injetável", "via oral" descrevem rota — não são o procedimento em si.
+  Ex: "quimioterapia oral" → "quimioterapia antineoplásica adultos" (não "medicamento via oral").
+- Corrija erros fonéticos comuns:
+  "papa nicolau" → "exame citopatológico colo utero rastreamento cervical"
+  "gesso no braço" → "imobilização gessada fratura membro superior"
+
 Responda SOMENTE com JSON: {"query": "terminologia técnica aqui"}"""
 
 _SYSTEM_CLASSIFY = """\
 Você é um assistente especializado em classificação de procedimentos SIGTAP do SUS.
-Escolha o procedimento mais adequado para a descrição clínica, considerando o texto
-original e a lista de candidatos recuperados do SIGTAP.
+Escolha o procedimento mais adequado para a descrição clínica.
+
+Regras:
+- Para termos de triagem/rastreamento (ex: "Papa Nicolau", "preventivo"), prefira procedimentos
+  de rastreamento (citopatológico) em vez de diagnóstico invasivo (biópsia).
+- Quando a descrição se refere a uma TERAPIA (administração de medicamento, inalação terapêutica,
+  infusão), prefira o procedimento terapêutico — não um procedimento de DIAGNÓSTICO POR IMAGEM
+  que use o mesmo meio físico (ex: cintilografia por inalação é diagnóstico, não terapia).
+- Considere tanto o texto original quanto a terminologia técnica expandida.
+- Leia a descrição de cada candidato para distinguir procedimentos clinicamente similares.
+
 Responda SOMENTE com JSON no formato: {"co_procedimento": "XXXXXXXXXX"}"""
 
 
-async def _buscar_candidatos(
-    texto: str,
+async def _buscar_vetorial(
+    query_vec_str: str,
     competencia: str,
     session: AsyncSession,
+    limit: int,
 ) -> list[dict]:
-    """Retorna até TOP_K procedimentos por similaridade semântica (pgvector)."""
-    try:
-        embedding_response = await _openai.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=[texto],
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Erro ao gerar embedding: {exc}") from exc
-
-    query_vec = embedding_response.data[0].embedding
-    query_vec_str = "[" + ",".join(str(x) for x in query_vec) + "]"
-
+    """Busca vetorial pgvector. Retorna lista com distancia e ds_procedimento."""
     # Vetor embutido diretamente no SQL — origem: API OpenAI, não input do usuário.
     # asyncpg não aceita ::vector como cast de parâmetro nomeado.
     search_sql = text(f"""
@@ -78,35 +136,159 @@ async def _buscar_candidatos(
             p.no_procedimento,
             p.vl_sa,
             p.vl_sp,
+            LEFT(COALESCE(d.ds_procedimento, ''), {DS_PROC_MAX_CHARS}) AS ds_procedimento,
             (e.embedding <=> '{query_vec_str}'::vector) AS distancia
         FROM embeddings_procedimentos e
         JOIN sigtap_procedimentos p
             ON p.co_procedimento = e.co_procedimento
            AND p.dt_competencia = e.dt_competencia
+        LEFT JOIN sigtap_descricoes d
+            ON d.co_procedimento = e.co_procedimento
+           AND d.dt_competencia = e.dt_competencia
         WHERE e.dt_competencia = :competencia
           AND e.embedding IS NOT NULL
         ORDER BY distancia ASC
         LIMIT :limit
     """)
-
-    try:
-        result = await session.execute(
-            search_sql,
-            {"competencia": competencia, "limit": TOP_K},
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Erro na busca vetorial: {exc}") from exc
-
-    rows = result.fetchall()
+    result = await session.execute(search_sql, {"competencia": competencia, "limit": limit})
     return [
         {
             "co_procedimento": r.co_procedimento,
             "no_procedimento": r.no_procedimento,
             "vl_sa": r.vl_sa,
             "vl_sp": r.vl_sp,
+            "ds_procedimento": r.ds_procedimento or "",
+            "distancia": r.distancia,
         }
-        for r in rows
+        for r in result.fetchall()
     ]
+
+
+async def _buscar_substring(
+    termo: str,
+    competencia: str,
+    session: AsyncSession,
+    limit: int,
+) -> list[dict]:
+    """Busca por substring normalizada em no_procedimento (PostgreSQL nativo, sem extensão)."""
+    termo_norm = _normalizar(termo)
+    # LOWER() embutido no SQL — termo_norm é gerado internamente, não vem do usuário diretamente.
+    # Usamos parâmetro nomeado para o termo de busca (seguro contra SQL injection).
+    substr_sql = text("""
+        SELECT
+            p.co_procedimento,
+            p.no_procedimento,
+            p.vl_sa,
+            p.vl_sp,
+            LEFT(COALESCE(d.ds_procedimento, ''), :ds_max) AS ds_procedimento
+        FROM sigtap_procedimentos p
+        LEFT JOIN sigtap_descricoes d
+            ON d.co_procedimento = p.co_procedimento
+           AND d.dt_competencia = p.dt_competencia
+        WHERE p.dt_competencia = :competencia
+          AND LOWER(p.no_procedimento) LIKE '%' || :termo || '%'
+        LIMIT :limit
+    """)
+    result = await session.execute(
+        substr_sql,
+        {"competencia": competencia, "termo": termo_norm, "limit": limit, "ds_max": DS_PROC_MAX_CHARS},
+    )
+    return [
+        {
+            "co_procedimento": r.co_procedimento,
+            "no_procedimento": r.no_procedimento,
+            "vl_sa": r.vl_sa,
+            "vl_sp": r.vl_sp,
+            "ds_procedimento": r.ds_procedimento or "",
+            "distancia": None,
+        }
+        for r in result.fetchall()
+    ]
+
+
+def _rrf_merge(vec_results: list[dict], sub_results: list[dict], k: int = 60) -> list[dict]:
+    """Combina dois rankings via Reciprocal Rank Fusion. Retorna lista sem duplicatas."""
+    scores: dict[str, float] = {}
+    by_code: dict[str, dict] = {}
+
+    for rank, item in enumerate(vec_results):
+        code = item["co_procedimento"]
+        scores[code] = scores.get(code, 0.0) + 1.0 / (k + rank + 1)
+        by_code[code] = item
+
+    for rank, item in enumerate(sub_results):
+        code = item["co_procedimento"]
+        scores[code] = scores.get(code, 0.0) + 1.0 / (k + rank + 1)
+        if code not in by_code:
+            by_code[code] = item
+
+    ordenados = sorted(scores.keys(), key=lambda c: scores[c], reverse=True)
+    return [by_code[c] for c in ordenados]
+
+
+async def _buscar_candidatos_hybrid(
+    texto: str,
+    query_expandida: str,
+    competencia: str,
+    session: AsyncSession,
+) -> list[dict]:
+    """Hybrid search: pgvector + fallback substring com RRF quando confiança é baixa."""
+    try:
+        embedding_response = await _openai.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=[query_expandida],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Erro ao gerar embedding: {exc}") from exc
+
+    query_vec = embedding_response.data[0].embedding
+    query_vec_str = "[" + ",".join(str(x) for x in query_vec) + "]"
+
+    try:
+        vec_results = await _buscar_vetorial(query_vec_str, competencia, session, limit=TOP_K)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erro na busca vetorial: {exc}") from exc
+
+    if not vec_results:
+        return []
+
+    top1_dist = vec_results[0]["distancia"]
+    logger.info(
+        "pgvector top-%d | query=%r | top-1: %s (dist=%.4f) | códigos: %s",
+        len(vec_results),
+        query_expandida,
+        vec_results[0]["co_procedimento"],
+        top1_dist,
+        [c["co_procedimento"] for c in vec_results],
+    )
+
+    # Ativa fallback substring quando confiança da busca vetorial é baixa
+    if top1_dist > DIST_THRESHOLD_FALLBACK:
+        # Combina tokens da query expandida E do texto original para maior cobertura
+        tokens_exp = _tokens_relevantes(query_expandida)
+        tokens_orig = _tokens_relevantes(texto)
+        # União preservando ordem: expandida primeiro, depois originais não duplicados
+        tokens = tokens_exp + [t for t in tokens_orig if t not in tokens_exp]
+        sub_results: list[dict] = []
+        seen_codes: set[str] = set()
+        for token in tokens[:4]:  # no máximo 4 tokens
+            parcial = await _buscar_substring(token, competencia, session, limit=15)
+            if parcial:
+                logger.info("substring fallback | token=%r | %d resultados", token, len(parcial))
+                for item in parcial:
+                    if item["co_procedimento"] not in seen_codes:
+                        sub_results.append(item)
+                        seen_codes.add(item["co_procedimento"])
+
+        if sub_results:
+            merged = _rrf_merge(vec_results, sub_results)
+            logger.info(
+                "RRF merge: %d vetorial + %d substring → %d únicos",
+                len(vec_results), len(sub_results), len(merged),
+            )
+            return merged[:TOP_K]
+
+    return vec_results
 
 
 def _formatar_valor(vl_sa: int | None, vl_sp: int | None) -> str:
@@ -137,9 +319,9 @@ async def classificar_procedimento(
     competencia: str,
     session: AsyncSession,
 ) -> dict:
-    """Classifica o procedimento descrito em `texto` usando pgvector + Claude Haiku.
+    """Classifica o procedimento descrito em `texto` usando hybrid search + Claude Haiku.
 
-    Pipeline: Haiku expande query → embedding → pgvector top-15 → Haiku classifica.
+    Pipeline: Haiku expande query → pgvector top-30 (+ substring fallback via RRF) → Haiku classifica.
     Retorna {"co_procedimento": str, "no_procedimento": str, "vl_total": int}.
     """
     if not settings.ANTHROPIC_API_KEY:
@@ -148,20 +330,23 @@ async def classificar_procedimento(
     # Etapa 1: reformular texto coloquial para terminologia técnica SIGTAP
     query_busca = await _expandir_query(texto)
 
-    candidatos = await _buscar_candidatos(query_busca, competencia, session)
+    # Etapa 2: hybrid search
+    candidatos = await _buscar_candidatos_hybrid(texto, query_busca, competencia, session)
 
     if not candidatos:
         raise HTTPException(status_code=404, detail="Nenhum procedimento encontrado")
 
-    # Monta lista numerada para o prompt
+    # Monta lista numerada para o prompt — inclui descrição truncada para ajudar o Haiku
     linhas = []
     for i, c in enumerate(candidatos, 1):
         valor = _formatar_valor(c["vl_sa"], c["vl_sp"])
-        linhas.append(f"{i}. {c['co_procedimento']} — {c['no_procedimento']} ({valor})")
+        desc = f" | {c['ds_procedimento']}" if c.get("ds_procedimento") else ""
+        linhas.append(f"{i}. {c['co_procedimento']} — {c['no_procedimento']} ({valor}){desc}")
     lista_candidatos = "\n".join(linhas)
 
     user_message = (
-        f"Texto original: {texto}\n\n"
+        f"Texto original: {texto}\n"
+        f"Terminologia técnica expandida: {query_busca}\n\n"
         f"Candidatos SIGTAP (competência {competencia}):\n{lista_candidatos}\n\n"
         "Escolha o co_procedimento mais adequado para a descrição clínica."
     )
@@ -169,11 +354,12 @@ async def classificar_procedimento(
     try:
         response = await _get_haiku().messages.create(
             model=HAIKU_MODEL,
-            max_tokens=64,
+            max_tokens=512,
             system=_SYSTEM_CLASSIFY,
             messages=[{"role": "user", "content": user_message}],
         )
-        raw = response.content[0].text
+        raw = response.content[0].text if response.content else ""
+        logger.debug("Haiku classificação raw: %r", raw)
         escolha = json.loads(_extrair_json(raw))["co_procedimento"]
     except Exception as exc:
         logger.warning("Haiku falhou (%s) — usando candidatos[0] como fallback", exc)

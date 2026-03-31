@@ -79,7 +79,7 @@ Cron job diário às 3h (Brasília):
 
 **Fluxo principal:**
 
-1. **Scan:** profissional aponta câmera para o código de barras do Cartão SUS. App lê o CNS e consulta CADSUS v5. Exibe: *"Maria da Silva, F, 45 anos, Gravataí-RS"*. Profissional confirma.
+1. **Identificação do paciente:** app abre com o paciente do turno já carregado (identificado via CADSUS). Para registrar um novo paciente, o profissional toca em "Próximo paciente" após confirmar o registro anterior — o app então solicita o scan do Cartão SUS ou a digitação do CNS como fallback. App lê o CNS e consulta CADSUS v5. Exibe: *"Maria da Silva, F, 45 anos, Gravataí-RS"*. Profissional confirma.
 2. **Áudio:** profissional pressiona botão e descreve o procedimento em linguagem natural. Whisper transcreve. Áudio permanece em memória volátil do browser (nunca enviado ao servidor ou persistido em disco) para permitir regravação caso a transcrição esteja incorreta.
 3. **Confirmação:** app exibe código SIGTAP identificado + descrição. Se houver ambiguidade, apresenta opções com botões de resposta rápida. Profissional confirma ou corrige. **Áudio é descartado (buffer liberado) ao confirmar** — apenas o texto estruturado é armazenado.
 4. **Alternativas:** captura por texto (digitação livre) e leitura de código de barras SIGTAP via câmera.
@@ -251,7 +251,7 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 |---|---|
 | Latência ponta a ponta | < 5s do envio do áudio até a confirmação |
 | Disponibilidade | 99,5% de uptime mensal |
-| Precisão SIGTAP | > 90% de classificação correta sem intervenção humana (meta piloto) |
+| Precisão SIGTAP | > 90% de classificação correta sem intervenção humana (meta piloto) — golden set em `docs/evals_classificacao.md`; acurácia atual ~50% |
 | Auditabilidade | 100% das operações sobre dados sensíveis rastreadas |
 | Multi-tenancy | Dados de cada município completamente isolados |
 | Exportação BPA | 100% de conformidade com layout DATASUS — aceito sem rejeição no SIA |
@@ -276,15 +276,18 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 
 Baseado em produção real de município de ~40 mil habitantes (2025): ~520 mil procedimentos/ano, dos quais ~95% são ambulatoriais (BPA) — ~41 mil procedimentos BPA/mês. Desses, ~15 mil encontros clínicos passam pelo fluxo de áudio e ~27 mil chamadas de classificação SIGTAP são realizadas no total.
 
+O pipeline de classificação faz **2 chamadas ao Haiku por registro**: query expansion (~180 tokens) + classificação final (~620 tokens). Total ~800 tokens/registro. Preço Haiku: $0,80/M input + $4,00/M output (câmbio R$ 6,00).
+
 | Item | Volume mensal | Custo mensal |
 |---|---|---|
 | Whisper STT | ~15.000 áudios × 15s ≈ 3.750 min | R$ 120–150 |
-| Claude Haiku (classificação SIGTAP) | ~27.000 classificações | R$ 450–700 |
+| Claude Haiku (query expansion + classificação SIGTAP) | ~27.000 registros × 2 chamadas ≈ ~800 tokens cada | R$ 130–160 |
+| OpenAI embeddings (text-embedding-3-small) | ~27.000 vetores × 512 tokens | R$ 15–20 |
 | APIs DATASUS (CADSUS, SIGTAP, CNES) | — | Gratuito |
 | Railway (Postgres + backend + PWA) | — | R$ 100–180 |
-| **Total de custo** | | **R$ 670–1.030** |
+| **Total de custo** | | **R$ 365–510** |
 
-> ~R$ 0,025/procedimento BPA ou ~R$ 0,07/encontro com áudio.
+> ~R$ 0,013/procedimento BPA ou ~R$ 0,034/encontro com áudio.
 
 ---
 

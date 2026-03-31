@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Mic, Check, X, Send, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle } from "lucide-react";
+import { Camera, Mic, Check, X, Send, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle, RotateCcw, Plus } from "lucide-react";
 
 const BLUE = "#1B4F72";
 const BLUE_LIGHT = "#D6EAF8";
@@ -171,6 +171,10 @@ function CameraScanner({ onSuccess, onClose }) {
         </div>
         <div style={{ width: "100%", flex: 1, background: "rgba(0,0,0,0.55)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16, gap: 8 }}>
           <span style={{ color: "#fff", fontSize: 13 }}>Aponte para o código de barras do cartão</span>
+          {/* Banner de simulação */}
+          <div style={{ background: "#FFC107", color: "#333", fontSize: 12, fontWeight: 600, borderRadius: 8, padding: "8px 14px", maxWidth: 280, textAlign: "center", lineHeight: 1.4, marginTop: 8 }}>
+            SIMULAÇÃO. A leitura real do Cartão SUS estará disponível após integração com esta unidade.
+          </div>
         </div>
       </div>
 
@@ -244,7 +248,9 @@ function StatCard({ icon, value, label, bgColor, color }) {
 }
 
 export default function App() {
-  const [step, setStep] = useState(0);
+  // step 0 = identificar paciente, step 1 = gravar procedimento, step 2+ = classificação/validação
+  // Abre direto no step 1 (paciente DEMO já identificado para o demo)
+  const [step, setStep] = useState(1);
   const [scanning, setScanning] = useState(false);
   const [recording, setRecording] = useState(false);
   const [biopsia, setBiopsia] = useState(null);
@@ -257,6 +263,8 @@ export default function App() {
   const [transcricaoErro, setTranscricaoErro] = useState(null);
   const [procedure, setProcedure] = useState(null);
   const [procedureErro, setProcedureErro] = useState(null);
+  // Lista de procedimentos confirmados para o mesmo paciente
+  const [procedures, setProcedures] = useState([]);
   const chatRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -272,7 +280,7 @@ export default function App() {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
-  }, [step, biopsia, confirmed, showStats]);
+  }, [step, biopsia, confirmed, showStats, procedures]);
 
   function handleScan() {
     if (step > 0 || scanning) return;
@@ -357,11 +365,32 @@ export default function App() {
     setTimeout(() => setShowStats(true), 600);
   }
 
+  // Adicionar procedimento ao mesmo paciente: salva o atual e volta ao step 1
+  function handleAddProcedure() {
+    if (procedure) {
+      setProcedures((prev) => [...prev, {
+        descricao: procedure.descricao,
+        codigo: procedure.codigo,
+        valor: procedure.valor,
+        biopsia,
+      }]);
+    }
+    setProcedure(null);
+    setTranscricaoTexto('');
+    setBiopsia(null);
+    setConfirmed(false);
+    setShowStats(false);
+    setTranscricaoErro(null);
+    setProcedureErro(null);
+    setStep(1);
+  }
+
   function handleReset() {
     setStep(0); setScanning(false); setRecording(false);
     setBiopsia(null); setConfirmed(false); setShowStats(false);
     setTranscricaoTexto(''); setTranscricaoErro(null);
     setProcedure(null); setProcedureErro(null);
+    setProcedures([]);
   }
 
   const procedureComplete = step >= 3 && biopsia !== null;
@@ -417,6 +446,7 @@ export default function App() {
         {/* CHAT */}
         <div ref={chatRef} style={{ flex: 1, overflowY: "auto", padding: "12px 12px 8px", display: "flex", flexDirection: "column" }}>
 
+          {/* Step 0: identificação manual de paciente */}
           {step === 0 && !scanning && (
             <BotMessage>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
@@ -434,6 +464,7 @@ export default function App() {
             </BotMessage>
           )}
 
+          {/* Paciente identificado (step >= 1) */}
           {step >= 1 && (
             <BotMessage>
               <div style={{ fontSize: 13, marginBottom: 8, fontWeight: 600, color: GREEN, display: "flex", alignItems: "center", gap: 5 }}>
@@ -448,6 +479,17 @@ export default function App() {
               </div>
             </BotMessage>
           )}
+
+          {/* Procedimentos já confirmados anteriormente (múltiplos procedimentos) */}
+          {procedures.map((proc, idx) => (
+            <BotMessage key={idx}>
+              <div style={{ fontSize: 12, color: GRAY_TEXT, marginBottom: 4 }}>Procedimento {idx + 1} registrado</div>
+              <CheckItem label="Procedimento" value={proc.descricao} />
+              <CheckItem label={"C\u00F3digo"} value={proc.codigo} />
+              <CheckItem label="Valor" value={proc.valor} />
+              {proc.biopsia && <CheckItem label="Adicional" value={"Bi\u00F3psia de intestino grosso por endoscopia"} />}
+            </BotMessage>
+          ))}
 
           {recording && (
             <UserMessage>
@@ -486,6 +528,13 @@ export default function App() {
                 <CheckItem label="Procedimento" value={procedure?.descricao ?? '…'} />
                 <CheckItem label={"C\u00F3digo"} value={procedure?.codigo ?? '…'} />
                 <CheckItem label="Valor SIGTAP" value={procedure?.valor ?? '…'} />
+                {/* Botão desfazer: volta ao step 1 para regravar */}
+                <button
+                  onClick={() => { setStep(1); setProcedure(null); setTranscricaoTexto(''); setBiopsia(null); setProcedureErro(null); setTranscricaoErro(null); }}
+                  style={{ marginTop: 8, fontSize: 12, color: GRAY_TEXT, background: "none", border: "1px solid #DDD", borderRadius: 8, padding: "4px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
+                >
+                  <RotateCcw size={11} /> Desfazer
+                </button>
               </BotMessage>
               <BotMessage>
                 <div style={{ fontSize: 13, marginBottom: 8 }}>
@@ -530,26 +579,43 @@ export default function App() {
                   <div style={{ fontSize: 12, lineHeight: 1.8 }}>
                     <div><strong>Paciente:</strong> {DEMO_PATIENT.nome}</div>
                     <div><strong>CNS:</strong> {DEMO_PATIENT.cns}</div>
-                    <div><strong>Procedimento:</strong> {procedure?.descricao} ({procedure?.codigo})</div>
+                    {/* Procedimentos anteriores */}
+                    {procedures.map((proc, idx) => (
+                      <div key={idx}><strong>Proc. {idx + 1}:</strong> {proc.descricao} ({proc.codigo})</div>
+                    ))}
+                    <div><strong>{procedures.length > 0 ? `Proc. ${procedures.length + 1}:` : "Procedimento:"}</strong> {procedure?.descricao} ({procedure?.codigo})</div>
                     {biopsia && <div><strong>Adicional:</strong> {"Bi\u00F3psia intestino grosso (02.01.01.031-0)"}</div>}
-                    <div><strong>Data:</strong> 19/03/2026</div>
+                    <div><strong>Data:</strong> {new Date().toLocaleDateString('pt-BR')}</div>
                     <div><strong>Valor total:</strong> {biopsia ? "R$ 172,27" : procedure?.valor}</div>
                   </div>
                 </div>
 
                 {!confirmed ? (
-                  <button
-                    onClick={handleConfirm}
-                    style={{
-                      width: "100%", padding: "12px 0", borderRadius: 12,
-                      border: "none", background: GREEN, color: "#fff",
-                      fontSize: 14, fontWeight: 700, cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      transition: "all 0.2s",
-                    }}
-                  >
-                    <Check size={16} strokeWidth={3} /> Confirmar registro
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <button
+                      onClick={handleConfirm}
+                      style={{
+                        width: "100%", padding: "12px 0", borderRadius: 12,
+                        border: "none", background: GREEN, color: "#fff",
+                        fontSize: 14, fontWeight: 700, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      <Check size={16} strokeWidth={3} /> Confirmar registro
+                    </button>
+                    <button
+                      onClick={handleAddProcedure}
+                      style={{
+                        width: "100%", padding: "10px 0", borderRadius: 12,
+                        border: `1.5px solid ${BLUE}`, background: "#fff", color: BLUE,
+                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}
+                    >
+                      <Plus size={14} /> Adicionar procedimento
+                    </button>
+                  </div>
                 ) : (
                   <div style={{
                     textAlign: "center", padding: "10px 0", color: GREEN, fontWeight: 700, fontSize: 14,
@@ -606,13 +672,13 @@ export default function App() {
                   fontSize: 13, fontWeight: 600, cursor: "pointer",
                 }}
               >
-                Novo registro
+                Registrar próximo paciente
               </button>
             </BotMessage>
           )}
         </div>
 
-        {/* TEXT INPUT + MIC */}
+        {/* TEXT INPUT */}
         <div style={{ padding: "6px 12px", background: "#fff", borderTop: "1px solid #ECECEC", display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
           <input
             type="text"
@@ -624,13 +690,6 @@ export default function App() {
             }}
           />
           <button style={{
-            width: 38, height: 38, borderRadius: "50%", border: "1.5px solid #DDD",
-            background: "#fff", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>
-            <Mic size={18} color={GRAY_TEXT} />
-          </button>
-          <button style={{
             width: 38, height: 38, borderRadius: "50%", border: "none",
             background: BLUE, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
@@ -640,64 +699,81 @@ export default function App() {
         </div>
 
         {/* MAIN ACTION BUTTONS */}
-        <div style={{ display: "flex", gap: 10, padding: "6px 12px 0", background: "#fff", flexShrink: 0 }}>
-          <button
-            className="action-btn"
-            onClick={handleScan}
-            style={{
-              flex: 1, height: 80, borderRadius: 18, border: "none",
-              cursor: step > 0 ? "default" : "pointer",
-              background: step > 0 ? GREEN_LIGHT : scanning ? "#FFF3CD" : BLUE_LIGHT,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-              opacity: step > 0 && !scanning ? 0.55 : 1,
-            }}
-          >
-            {step > 0
-              ? <Check size={28} color={GREEN} strokeWidth={2.5} />
-              : scanning
-                ? <Loader size={28} color="#B7950B" strokeWidth={2} style={{ animation: "pulse 1s ease infinite" }} />
-                : <Camera size={28} color={BLUE} strokeWidth={1.8} />
-            }
-            <span style={{ fontSize: 13, fontWeight: 600, color: step > 0 ? GREEN : scanning ? "#B7950B" : BLUE }}>
-              {step > 0 ? "Paciente OK" : scanning ? "Escaneando..." : "Escanear cart\u00E3o"}
-            </span>
-          </button>
+        {step === 0 ? (
+          // Step 0: dois botões (escanear + gravar)
+          <>
+            <div style={{ display: "flex", gap: 10, padding: "6px 12px 0", background: "#fff", flexShrink: 0 }}>
+              <button
+                className="action-btn"
+                onClick={handleScan}
+                style={{
+                  flex: 1, height: 80, borderRadius: 18, border: "none",
+                  cursor: scanning ? "default" : "pointer",
+                  background: scanning ? "#FFF3CD" : BLUE_LIGHT,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                }}
+              >
+                {scanning
+                  ? <Loader size={28} color="#B7950B" strokeWidth={2} style={{ animation: "pulse 1s ease infinite" }} />
+                  : <Camera size={28} color={BLUE} strokeWidth={1.8} />
+                }
+                <span style={{ fontSize: 13, fontWeight: 600, color: scanning ? "#B7950B" : BLUE }}>
+                  {scanning ? "Escaneando..." : "Escanear cart\u00E3o"}
+                </span>
+              </button>
 
-          <button
-            className="action-btn"
-            onClick={handleMic}
-            style={{
-              flex: 1, height: 80, borderRadius: 18, border: "none",
-              cursor: step === 1 ? "pointer" : "default",
-              background: recording ? "#FADBD8" : procedureComplete ? GREEN_LIGHT : step === 1 ? BLUE_LIGHT : "#F0F0F0",
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-              animation: recording ? "rec 1.5s ease infinite" : "none",
-              opacity: step < 1 ? 0.35 : (step > 1 && !procedureComplete) ? 0.65 : 1,
-            }}
-          >
-            {procedureComplete
-              ? <Check size={28} color={GREEN} strokeWidth={2.5} />
-              : recording
-                ? <Circle size={28} color={RED} fill={RED} strokeWidth={0} />
-                : <Mic size={28} color={step === 1 ? BLUE : "#999"} strokeWidth={1.8} />
-            }
-            <span style={{ fontSize: 13, fontWeight: 600, color: procedureComplete ? GREEN : recording ? RED : step === 1 ? BLUE : "#999" }}>
-              {procedureComplete ? "Procedimento OK" : recording ? "Gravando..." : "Gravar procedimento"}
-            </span>
-          </button>
-        </div>
-        {/* FALLBACK ID OPTIONS */}
-        {step === 0 && !scanning && (
-          <div style={{ background: "#fff", padding: "6px 12px 14px", display: "flex", justifyContent: "center", gap: 24, flexShrink: 0 }}>
-            <button onClick={() => setInputMode("cpf")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
-              Digitar CPF
-            </button>
-            <button onClick={() => setInputMode("cns")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
-              Digitar CNS
+              <button
+                className="action-btn"
+                style={{
+                  flex: 1, height: 80, borderRadius: 18, border: "none",
+                  cursor: "default",
+                  background: "#F0F0F0",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                  opacity: 0.35,
+                }}
+              >
+                <Mic size={28} color="#999" strokeWidth={1.8} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#999" }}>Gravar procedimento</span>
+              </button>
+            </div>
+            <div style={{ background: "#fff", padding: "6px 12px 14px", display: "flex", justifyContent: "center", gap: 24, flexShrink: 0 }}>
+              <button onClick={() => setInputMode("cpf")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+                Digitar CPF
+              </button>
+              <button onClick={() => setInputMode("cns")} style={{ background: "none", border: "none", color: GRAY_TEXT, fontSize: 12, cursor: "pointer", textDecoration: "underline" }}>
+                Digitar CNS
+              </button>
+            </div>
+          </>
+        ) : (
+          // Step >= 1: apenas botão de microfone centralizado (ou check se completo)
+          <div style={{ padding: "6px 12px 14px", background: "#fff", flexShrink: 0 }}>
+            <button
+              className="action-btn"
+              onClick={handleMic}
+              style={{
+                width: "100%", height: 80, borderRadius: 18, border: "none",
+                cursor: step === 1 ? "pointer" : "default",
+                background: recording ? "#FADBD8" : procedureComplete ? GREEN_LIGHT : step === 1 ? BLUE_LIGHT : "#F0F0F0",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
+                animation: recording ? "rec 1.5s ease infinite" : "none",
+                opacity: step > 1 && !procedureComplete ? 0.65 : 1,
+              }}
+            >
+              {procedureComplete
+                ? <Check size={28} color={GREEN} strokeWidth={2.5} />
+                : recording
+                  ? <Circle size={28} color={RED} fill={RED} strokeWidth={0} />
+                  : <Mic size={28} color={step === 1 ? BLUE : "#999"} strokeWidth={1.8} />
+              }
+              <span style={{ fontSize: 13, fontWeight: 600, color: procedureComplete ? GREEN : recording ? RED : step === 1 ? BLUE : "#999" }}>
+                {procedureComplete ? "Procedimento OK" : recording ? "Gravando..." : "Gravar procedimento"}
+              </span>
             </button>
           </div>
         )}
-        {step > 0 && <div style={{ background: "#fff", height: 14, flexShrink: 0 }} />}
+
+        {step > 0 && step < 1 && <div style={{ background: "#fff", height: 14, flexShrink: 0 }} />}
       </div>
 
       {!isMobile && (

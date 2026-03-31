@@ -5,6 +5,8 @@
 
 Estratégia: construir o núcleo técnico com dados mockados até ter um protótipo demonstrável de ponta a ponta. Esse protótipo é o argumento para obter o acordo de cooperação técnica com a SMS e viabilizar a integração real com o CADSUS.
 
+**Estratégia de demo (pré-acordo SMS):** paciente hardcoded (Maria Aparecida da Silva) é suficiente — o scan de cartão SUS e a integração CADSUS real dependem de autorização formal da SMS. O app abre diretamente no step 1 (paciente já identificado), demonstrando o fluxo de valor sem expor a limitação. O scan de cartão aparece apenas como "adicionar próximo paciente" após a confirmação do registro — ponto em que o cliente já passou pelo anti-glosa e se encantou. Mock de CADSUS isolado entra junto com o primeiro usuário real ou com o acordo SMS. O protótipo funcional dos passos 0–5 é o argumento central para obter a adesão ao acordo.
+
 ## Escopo atual
 
 | # | Módulo | Dependências | Obs |
@@ -21,8 +23,11 @@ Estratégia: construir o núcleo técnico com dados mockados até ter um protót
 | ~~2~~ | ~~Embeddings + busca semântica (pgvector)~~ | 1a, 1c | ✅ 4.980 procedimentos indexados no Railway (competência 202603). Migration `0002_ivfflat_embeddings` aplicada (`head`). `GET /busca/procedimentos` funcionando e consumido pelo frontend (`resultados[0]`). Backend exposto em `faturasus.up.railway.app`; frontend servido via StaticFiles (Dockerfile multistage). Ver DEC-010. |
 | ~~3~~ | ~~Transcrição com Whisper~~ | 0b | ✅ `POST /transcricao` funcionando. Frontend grava áudio real, envia para o backend, exibe transcrição. Integrado no mesmo fluxo que o pgvector. |
 | ~~4~~ | ~~Pipeline de classificação com Claude Haiku~~ | 2, 3 | ✅ `POST /classificar`: query expansion (Haiku) → embedding → pgvector top-15 → Haiku classifica. Frontend substituiu `GET /busca/procedimentos` + `resultados[0]` por `POST /classificar`. Fix: `_extrair_json()` remove markdown fence da resposta do Haiku. Ver DEC-004. |
-| 5 | CADSUS mock | 0b | Módulo isolado retornando dados fictícios; substituição cirúrgica depois. Não desbloqueia nem é desbloqueado pelo passo 4. |
-| 6 | Validação anti-glosa | 1a, 1b, 1c, 5 | CBO, habilitação, serviço CNES, instrumento, compatibilidade, FPO, duplicidade |
+| 5 | Refinamentos de frontend para demo | 4 | App abre no step 1 (paciente hardcoded já identificado). Botão "Escanear cartão" substituído por "Adicionar próximo paciente" no dashboard pós-confirmação (com label explicando que é integração futura). Desambiguação baseada no procedimento classificado pelo Haiku (não hardcoded). Data dinâmica. Input de texto do rodapé removido (não funcional). Ver prompt de refinamentos no fim deste arquivo. |
+| 5b | Revisão da estratégia de retrieval SIGTAP | 4 | Em andamento. Mudanças em `backend/app/services/classificacao.py`: TOP_K 15→30; hybrid search (pgvector + substring fallback com RRF); prompts revisados (query expansion preserva input técnico, classificação inclui `ds_procedimento` truncado e orientação rastreio/diagnóstico); `_extrair_json` robusto a texto extra pós-JSON; `max_tokens` classificação 64→512. Melhoria técnica confirmada: Papa Nicolau agora retorna citopatológico rastreamento (antes retornava biópsia). Golden set corrigido — nomes esperados atualizados para a competência 202603. Caso restante: "nebulizacao" → recall@30 OK mas Haiku descarta INALAÇÃO/NEBULIZAÇÃO ao ver lista dominada por medicamentos injetáveis. Ver DEC-011, `docs/evals_classificacao.md`, prompt abaixo. |
+| 5c | Desambiguação — ambiguidade semântica (top-3) | 5, 5b | Backend retorna top-3 candidatos quando score de confiança estiver abaixo de threshold (definir). Frontend exibe quick-reply buttons com as opções — padrão já existe no protótipo mockado. Ex: colonoscopia com/sem biópsia. |
+| 5d | Desambiguação — detalhe faltante | 5, 5b | Haiku detecta quando o texto não tem informação suficiente para classificar (lateralidade, quantidade, complexidade de curativo) e devolve uma pergunta ao invés de um código. Frontend exibe a pergunta como mensagem do bot; profissional responde; backend reclassifica com contexto completo. |
+| 6 | Validação anti-glosa | 1a, 1b, 1c | CBO, habilitação, serviço CNES, instrumento, compatibilidade, FPO, duplicidade |
 | 7 | Geração e validação do arquivo BPA | 6 | Layout magnético DATASUS, separação PAB/MAC |
 | 8 | Dashboard + drill-down | 7 | KPIs, correção inline pelo faturista |
 | 9 | Exportação e histórico | 7, 8 | Consulta e reenvio de lotes |
@@ -40,16 +45,16 @@ Estratégia: construir o núcleo técnico com dados mockados até ter um protót
 |---|---|---|---|
 | 11 | Auth JWT + RBAC multi-tenant | 0–9 | Entra com o primeiro usuário real ou junto com CADSUS real |
 | 11b | Onboarding de municípios clientes | 11 | Endpoint `POST /admin/tenants` + CLI `onboard_municipio` — persiste município no banco e dispara ingestão CNES (`cnes.py --municipios`) em background. Ver prompt deixado no fim da sessão 1b. |
-| 12 | CADSUS v5 real | acordo SMS + 0–9 | Substitui o mock do passo 4 cirurgicamente |
+| 12 | CADSUS mock isolado | acordo SMS próximo | Módulo com interface idêntica ao real, retornando dados fictícios. Só faz sentido criar quando houver usuário real ou acordo SMS próximo — para demo, o paciente hardcoded basta. |
+| 13 | CADSUS v5 real | acordo SMS + 0–9 | Substitui o mock cirurgicamente |
 
-## Decisão sobre o CADSUS
 
-A integração real exige autorização formal da SMS. O mock (passo 4) deve ser isolado em um módulo dedicado para que a substituição seja cirúrgica. O protótipo funcional dos passos 0–10 é o argumento central para obter a adesão ao acordo.
+
 
 ## Investigações pendentes (resolver antes do passo indicado)
 
 | Passo | Antes de... | Investigar |
 |---|---|---|
-| 5 | Calibrar prompt do Haiku | Medir recall@15 com casos reais: percentual de vezes em que o procedimento correto está nos top-15 do pgvector. Se insuficiente, aumentar para 20–30. Ver DEC-004. |
+| 5b | Revisar estratégia de retrieval | Recall@15 e acurácia final medidos em `docs/evals_classificacao.md` — acurácia atual ~50%, meta 90%. Problemas: recall pgvector falha para termos coloquiais, query expansion insuficiente para contexto ambíguo, Haiku confunde procedimentos clinicamente similares. |
 | 11 | Implementar Auth JWT + RBAC | Definir modelo de deploy: SaaS multi-tenant (coluna `tenant_id` em tabelas operacionais) vs. instância dedicada por prefeitura (schemas separados). Impacto direto no schema do banco. Ver DEC-008. |
 | 12 | Integrar CADSUS real | Definir SHA-256 vs. AES-256-GCM para o CNS: SHA-256 é irreversível (não permite re-consultar o CADSUS depois); AES-256-GCM exige gestão de chave mas mantém o CNS recuperável. Ver DEC-009. |
