@@ -338,7 +338,10 @@ export default function App() {
 
   function handleConfirm() {
     setConfirmed(true);
-    setTimeout(() => setShowStats(true), 600);
+  }
+
+  function handleConcluir() {
+    setTimeout(() => setShowStats(true), 300);
   }
 
   // Adicionar procedimento ao mesmo paciente: salva o atual e volta ao step 1
@@ -555,17 +558,32 @@ export default function App() {
                 }}>
                   <Check size={18} strokeWidth={3} /> Registro salvo com sucesso!
                 </div>
-                <button
-                  onClick={handleAddProcedure}
-                  style={{
-                    width: "100%", padding: "10px 0", borderRadius: 12,
-                    border: `1.5px solid ${BLUE}`, background: "#fff", color: BLUE,
-                    fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}
-                >
-                  <Plus size={14} /> Adicionar procedimento
-                </button>
+                {!showStats && (
+                  <>
+                    <button
+                      onClick={handleAddProcedure}
+                      style={{
+                        width: "100%", padding: "10px 0", borderRadius: 12,
+                        border: `1.5px solid ${BLUE}`, background: "#fff", color: BLUE,
+                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}
+                    >
+                      <Plus size={14} /> Adicionar procedimento
+                    </button>
+                    <button
+                      onClick={handleConcluir}
+                      style={{
+                        width: "100%", padding: "10px 0", borderRadius: 12,
+                        border: "none", background: BLUE, color: "#fff",
+                        fontSize: 13, fontWeight: 600, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}
+                    >
+                      <Check size={14} strokeWidth={3} /> Concluir atendimento
+                    </button>
+                  </>
+                )}
               </div>
             </BotMessage>
           )}
