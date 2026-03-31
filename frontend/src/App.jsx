@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Camera, Mic, Check, X, Send, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle, RotateCcw, Plus } from "lucide-react";
+import { Camera, Mic, Check, X, Loader, Circle, ScanLine, ArrowUp, ClipboardCheck, Clock, AlertCircle, RotateCcw, Plus } from "lucide-react";
 
 const BLUE = "#1B4F72";
 const BLUE_LIGHT = "#D6EAF8";
@@ -80,24 +80,6 @@ function CheckItem({ label, value, ok = true }) {
   );
 }
 
-function QuickReply({ text, selected, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: "7px 16px", borderRadius: 20,
-        border: selected ? `2px solid ${BLUE}` : "1.5px solid #D0D0D0",
-        background: selected ? BLUE_LIGHT : "#fff",
-        color: selected ? BLUE : "#333",
-        fontWeight: selected ? 600 : 400,
-        fontSize: 13, cursor: "pointer",
-        transition: "all 0.2s",
-      }}
-    >
-      {text}
-    </button>
-  );
-}
 
 function WaveformBars() {
   const heights = useRef([...Array(12)].map(() => 6 + Math.random() * 14));
@@ -253,7 +235,6 @@ export default function App() {
   const [step, setStep] = useState(1);
   const [scanning, setScanning] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [biopsia, setBiopsia] = useState(null);
   const [confirmed, setConfirmed] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 480);
@@ -280,7 +261,7 @@ export default function App() {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
-  }, [step, biopsia, confirmed, showStats, procedures]);
+  }, [step, confirmed, showStats, procedures]);
 
   function handleScan() {
     if (step > 0 || scanning) return;
@@ -355,11 +336,6 @@ export default function App() {
     setRecording(true);
   }
 
-  function handleBiopsia(val) {
-    setBiopsia(val);
-    setTimeout(() => setStep(3), 500);
-  }
-
   function handleConfirm() {
     setConfirmed(true);
     setTimeout(() => setShowStats(true), 600);
@@ -372,12 +348,10 @@ export default function App() {
         descricao: procedure.descricao,
         codigo: procedure.codigo,
         valor: procedure.valor,
-        biopsia,
       }]);
     }
     setProcedure(null);
     setTranscricaoTexto('');
-    setBiopsia(null);
     setConfirmed(false);
     setShowStats(false);
     setTranscricaoErro(null);
@@ -387,13 +361,13 @@ export default function App() {
 
   function handleReset() {
     setStep(0); setScanning(false); setRecording(false);
-    setBiopsia(null); setConfirmed(false); setShowStats(false);
+    setConfirmed(false); setShowStats(false);
     setTranscricaoTexto(''); setTranscricaoErro(null);
     setProcedure(null); setProcedureErro(null);
     setProcedures([]);
   }
 
-  const procedureComplete = step >= 3 && biopsia !== null;
+  const procedureComplete = confirmed;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: 0, fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif" }}>
@@ -528,105 +502,72 @@ export default function App() {
                 <CheckItem label="Procedimento" value={procedure?.descricao ?? '…'} />
                 <CheckItem label={"C\u00F3digo"} value={procedure?.codigo ?? '…'} />
                 <CheckItem label="Valor SIGTAP" value={procedure?.valor ?? '…'} />
-                {/* Botão desfazer: volta ao step 1 para regravar */}
-                <button
-                  onClick={() => { setStep(1); setProcedure(null); setTranscricaoTexto(''); setBiopsia(null); setProcedureErro(null); setTranscricaoErro(null); }}
-                  style={{ marginTop: 8, fontSize: 12, color: GRAY_TEXT, background: "none", border: "1px solid #DDD", borderRadius: 8, padding: "4px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-                >
-                  <RotateCcw size={11} /> Desfazer
-                </button>
-              </BotMessage>
-              <BotMessage>
-                <div style={{ fontSize: 13, marginBottom: 8 }}>
-                  {"A colonoscopia foi realizada "}
-                  <strong>{"com bi\u00F3psia"}</strong>?
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <QuickReply text={"Sim, com bi\u00F3psia"} selected={biopsia === true} onClick={() => handleBiopsia(true)} />
-                  <QuickReply text={"N\u00E3o, sem bi\u00F3psia"} selected={biopsia === false} onClick={() => handleBiopsia(false)} />
+                {/* Botões Confirmar e Refazer */}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button
+                    onClick={handleConfirm}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "none", background: GREEN, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                  >
+                    <Check size={13} strokeWidth={3} /> Confirmar
+                  </button>
+                  <button
+                    onClick={() => { setStep(1); setProcedure(null); setTranscricaoTexto(''); setProcedureErro(null); setTranscricaoErro(null); }}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "1px solid #DDD", background: "#fff", color: GRAY_TEXT, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                  >
+                    <RotateCcw size={13} /> Refazer
+                  </button>
                 </div>
               </BotMessage>
             </>
           )}
 
-          {step >= 3 && biopsia !== null && (
-            <>
-              <UserMessage>
-                <span style={{ fontSize: 13 }}>{biopsia ? "Sim, com bi\u00F3psia" : "N\u00E3o, sem bi\u00F3psia"}</span>
-              </UserMessage>
-              {biopsia && (
-                <BotMessage>
-                  <div style={{ fontSize: 13 }}>
-                    <CheckItem label="Procedimento adicional" value={"Bi\u00F3psia de intestino grosso por endoscopia"} />
-                    <CheckItem label={"C\u00F3digo"} value="02.01.01.031-0" />
-                    <CheckItem label="Valor adicional" value="R$ 26,84" />
-                  </div>
-                </BotMessage>
-              )}
-              <BotMessage>
-                <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 600, color: GREEN, display: "flex", alignItems: "center", gap: 5 }}>
-                  <Check size={14} strokeWidth={3} /> {"Todas as valida\u00E7\u00F5es aprovadas"}
-                </div>
-                <div style={{ fontSize: 12, marginBottom: 10 }}>
-                  <CheckItem label={"CBO compat\u00EDvel"} value={"Sim \u2014 Gastroenterologista"} />
-                  <CheckItem label="CNES habilitado" value="Sim" />
-                </div>
+          {confirmed && (
+            <BotMessage>
+              <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 600, color: GREEN, display: "flex", alignItems: "center", gap: 5 }}>
+                <Check size={14} strokeWidth={3} /> {"Todas as valida\u00E7\u00F5es aprovadas"}
+              </div>
+              <div style={{ fontSize: 12, marginBottom: 10 }}>
+                <CheckItem label={"CBO compat\u00EDvel"} value={"Sim \u2014 Gastroenterologista"} />
+                <CheckItem label="CNES habilitado" value="Sim" />
+              </div>
 
-                <div style={{ background: GRAY_BG, borderRadius: 10, padding: 12, marginBottom: 10, border: "1px solid #E0E0E0" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: BLUE, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                    Resumo do registro
-                  </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-                    <div><strong>Paciente:</strong> {DEMO_PATIENT.nome}</div>
-                    <div><strong>CNS:</strong> {DEMO_PATIENT.cns}</div>
-                    {/* Procedimentos anteriores */}
-                    {procedures.map((proc, idx) => (
-                      <div key={idx}><strong>Proc. {idx + 1}:</strong> {proc.descricao} ({proc.codigo})</div>
-                    ))}
-                    <div><strong>{procedures.length > 0 ? `Proc. ${procedures.length + 1}:` : "Procedimento:"}</strong> {procedure?.descricao} ({procedure?.codigo})</div>
-                    {biopsia && <div><strong>Adicional:</strong> {"Bi\u00F3psia intestino grosso (02.01.01.031-0)"}</div>}
-                    <div><strong>Data:</strong> {new Date().toLocaleDateString('pt-BR')}</div>
-                    <div><strong>Valor total:</strong> {biopsia ? "R$ 172,27" : procedure?.valor}</div>
-                  </div>
+              <div style={{ background: GRAY_BG, borderRadius: 10, padding: 12, marginBottom: 10, border: "1px solid #E0E0E0" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: BLUE, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Resumo do registro
                 </div>
+                <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                  <div><strong>Paciente:</strong> {DEMO_PATIENT.nome}</div>
+                  <div><strong>CNS:</strong> {DEMO_PATIENT.cns}</div>
+                  {procedures.map((proc, idx) => (
+                    <div key={idx}><strong>Proc. {idx + 1}:</strong> {proc.descricao} ({proc.codigo})</div>
+                  ))}
+                  <div><strong>{procedures.length > 0 ? `Proc. ${procedures.length + 1}:` : "Procedimento:"}</strong> {procedure?.descricao} ({procedure?.codigo})</div>
+                  <div><strong>Data:</strong> {new Date().toLocaleDateString('pt-BR')}</div>
+                  <div><strong>Valor total:</strong> {procedure?.valor}</div>
+                </div>
+              </div>
 
-                {!confirmed ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <button
-                      onClick={handleConfirm}
-                      style={{
-                        width: "100%", padding: "12px 0", borderRadius: 12,
-                        border: "none", background: GREEN, color: "#fff",
-                        fontSize: 14, fontWeight: 700, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      <Check size={16} strokeWidth={3} /> Confirmar registro
-                    </button>
-                    <button
-                      onClick={handleAddProcedure}
-                      style={{
-                        width: "100%", padding: "10px 0", borderRadius: 12,
-                        border: `1.5px solid ${BLUE}`, background: "#fff", color: BLUE,
-                        fontSize: 13, fontWeight: 600, cursor: "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      }}
-                    >
-                      <Plus size={14} /> Adicionar procedimento
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{
-                    textAlign: "center", padding: "10px 0", color: GREEN, fontWeight: 700, fontSize: 14,
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{
+                  textAlign: "center", padding: "10px 0", color: GREEN, fontWeight: 700, fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  animation: "fadeIn 0.4s ease",
+                }}>
+                  <Check size={18} strokeWidth={3} /> Registro salvo com sucesso!
+                </div>
+                <button
+                  onClick={handleAddProcedure}
+                  style={{
+                    width: "100%", padding: "10px 0", borderRadius: 12,
+                    border: `1.5px solid ${BLUE}`, background: "#fff", color: BLUE,
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    animation: "fadeIn 0.4s ease",
-                  }}>
-                    <Check size={18} strokeWidth={3} /> Registro salvo com sucesso!
-                  </div>
-                )}
-              </BotMessage>
-            </>
+                  }}
+                >
+                  <Plus size={14} /> Adicionar procedimento
+                </button>
+              </div>
+            </BotMessage>
           )}
 
           {showStats && (
