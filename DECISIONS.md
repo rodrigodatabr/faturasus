@@ -141,15 +141,15 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 ## DEC-010 — Deploy: monorepo + serviço único no protótipo; separar frontend/backend na v2
 
-**O que:** no protótipo, frontend (React/Vite) e backend (FastAPI) vivem no mesmo repo e são servidos pelo mesmo serviço Railway. O FastAPI serve `frontend/dist/` via StaticFiles. O `frontend/dist/` é buildado localmente (`npm run build`) e commitado com `git add -f` (forçando ignorar o `.gitignore` do Vite). O Railway apenas faz deploy do backend Python via `Procfile` — não executa build de Node.
+**O que:** no protótipo, frontend (React/Vite) e backend (FastAPI) vivem no mesmo repo e são servidos pelo mesmo serviço Railway. O FastAPI serve `frontend/dist/` via StaticFiles. O build é feito por um Dockerfile multistage na raiz: stage Node 22 builda o frontend (`npm run build`), stage Python 3.12 instala as dependências e copia o `dist/` gerado. O `frontend/dist/` **não está no git** — é gerado no Railway a cada deploy.
 
-**Por quê:** reduz overhead operacional na fase de protótipo (um serviço, um domínio, um deploy). O Railway não suporta builds multi-linguagem nativamente via Railpack sem configuração manual que se mostrou não-confiável. Commitar o `dist/` é a abordagem mais simples e determinística para o MVP.
+**Por quê:** reduz overhead operacional na fase de protótipo (um serviço, um domínio, um deploy). O Railway não suporta builds multi-linguagem nativamente via Railpack sem configuração manual que se mostrou não-confiável (railpack.json ignorado quando Root Directory aponta para `backend/`). O Dockerfile é determinístico e imune a mudanças de versão do Railpack.
 
-**Fluxo de deploy:** `npm run build` (dentro de `frontend/`) → `git add -f frontend/dist/` → `git commit` → `git push` → Railway redeploya o backend automaticamente.
+**Fluxo de deploy:** `git push` → Railway detecta o `Dockerfile` na raiz → builda a imagem (Node build + Python runtime) → deploy automático.
 
 **Quando separar:** quando o produto tiver usuários reais ou deploys frequentes do frontend independentes do backend. Mover o frontend para Vercel ou Cloudflare Pages (CDN global, grátis) e remover o bloco StaticFiles do `main.py`. A arquitetura atual já suporta isso cirurgicamente.
 
-**O que não fazer:** tentar configurar build multi-linguagem via railpack.json/railway.json na raiz — foi tentado e não funciona com Root Directory diferente da raiz do repo. Não commitar `frontend/dist/` sem antes rodar `npm run build` — o Railway não faz o build por conta própria.
+**O que não fazer:** commitar `frontend/dist/` no git — o Dockerfile já cuida do build. Tentar configurar build multi-linguagem via railpack.json/railway.json na raiz — foi tentado e não funciona com Root Directory diferente da raiz do repo.
 
 **Referência:** `Dockerfile`, `backend/app/main.py` (bloco StaticFiles), `roadmap.md` passo 2.
 
