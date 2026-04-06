@@ -167,6 +167,18 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 ---
 
+## DEC-014 — Retrieval de embeddings usa sempre a competência mais recente disponível
+
+**O que:** a `competencia` recebida pelo endpoint `/classificar` **não** é usada como filtro na busca pgvector nem na busca substring. O retrieval usa sempre `MAX(dt_competencia)` disponível em `embeddings_procedimentos`. O parâmetro `competencia` serve apenas como contexto textual no prompt do Haiku.
+
+**Por quê:** os embeddings SIGTAP são indexados mensalmente após o BDSIA ser processado. Entre a virada de mês e a nova ingestão (ex: 1° a ~10° de abril), não existem embeddings para a competência nova — mas os procedimentos SIGTAP não mudam significativamente mês a mês. Filtrar por competência do mês atual tornaria o classificador não-funcional durante esse período. As regras de validação anti-glosa (CBO, habilitação, serviço, instrumento) usam a tabela SIGTAP via join direto — não dependem do classificador. A competência correta para anti-glosa é derivada da `dt_atendimento` (DEC-013), independentemente da competência usada no retrieval.
+
+**O que não fazer:** filtrar `embeddings_procedimentos.dt_competencia` pela competência do mês enviada pelo frontend. Não confundir a competência do retrieval (sempre a mais recente disponível) com a competência do registro (derivada da `dt_atendimento`).
+
+**Referência:** `backend/app/services/classificacao.py` (`_buscar_candidatos_hybrid`), DEC-013.
+
+---
+
 ## DEC-008 — Modelo multi-tenant hierárquico: profissional → unidade → prefeitura
 
 **O que:** cada profissional de saúde terá uma conta vinculada ao seu CNS. A unidade de saúde (CNES) terá acesso ao dashboard de produção total da unidade, com capacidade de edição. A prefeitura/SMS visualizará a produção consolidada de todas as unidades antes de fechar e enviar o arquivo BPA ao Ministério da Saúde.

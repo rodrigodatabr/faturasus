@@ -382,6 +382,7 @@ export default function App() {
             valor: `R$ ${(vl_total / 100).toFixed(2).replace('.', ',')}`,
           });
         } catch {
+          setProcedure(null);
           setProcedureErro('Falha ao classificar procedimento. Tente novamente.');
         }
         setStep(2);
@@ -590,13 +591,13 @@ export default function App() {
                   <em>"{transcricaoTexto}"</em>
                 </div>
               </UserMessage>
-              <BotMessage>
+              {procedure && <BotMessage>
                 <div style={{ fontSize: 13, marginBottom: 8, fontWeight: 600, color: BLUE }}>
                   Procedimento identificado na SIGTAP
                 </div>
-                <CheckItem label="Procedimento" value={procedure?.descricao ?? '…'} />
-                <CheckItem label={"C\u00F3digo"} value={procedure?.codigo ?? '…'} />
-                <CheckItem label="Valor SIGTAP" value={procedure?.valor ?? '…'} />
+                <CheckItem label="Procedimento" value={procedure.descricao} />
+                <CheckItem label={"C\u00F3digo"} value={procedure.codigo} />
+                <CheckItem label="Valor SIGTAP" value={procedure.valor} />
                 {/* Botões Confirmar e Refazer */}
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button

@@ -277,7 +277,24 @@ async def _buscar_candidatos_hybrid(
         raise HTTPException(status_code=500, detail=f"Erro na busca vetorial: {exc}") from exc
 
     if not vec_results:
-        return []
+        # Fallback: tenta a competência mais recente disponível nos embeddings.
+        # A competência recebida pode ser mais nova que a última ingestão (ex: embeddings
+        # só existem para 202603 mas o frontend envia 202604). Usar MAX evita que o
+        # classificador pare de funcionar entre a virada de mês e a nova ingestão.
+        latest_row = await session.execute(
+            text("SELECT MAX(dt_competencia) FROM embeddings_procedimentos")
+        )
+        latest_comp = latest_row.scalar()
+        if latest_comp and latest_comp != competencia:
+            logger.info(
+                "Nenhum embedding para competência %s — fallback para %s",
+                competencia,
+                latest_comp,
+            )
+            vec_results = await _buscar_vetorial(query_vec_str, latest_comp, session, limit=TOP_K)
+            competencia = latest_comp
+        if not vec_results:
+            return []
 
     top1_dist = vec_results[0]["distancia"]
     logger.info(
