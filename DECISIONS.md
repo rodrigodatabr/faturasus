@@ -155,6 +155,18 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 ---
 
+## DEC-013 — Competência derivada da data de atendimento; registro retroativo é feature futura
+
+**O que:** a `competencia` enviada ao backend é sempre derivada da `dt_atendimento` (AAAAMM do mês do atendimento). O frontend não expõe campo separado de competência.
+
+**Por quê:** esse é o comportamento padrão — o profissional registra o atendimento do dia e o sistema determina a competência automaticamente. Registro retroativo (atendimento de competência anterior ao mês atual) é uma feature futura explícita, a ser implementada quando houver necessidade operacional real.
+
+**O que não fazer:** expor campo de competência editável na UI agora. Não hardcodar uma competência fixa — isso causa RETROATIVIDADE_EXCEDIDA quando o mês vira. Não derivar competência da data do sistema (`new Date()`) independentemente da `dt_atendimento` — as duas devem ser consistentes.
+
+**Feature futura:** formulário de registro retroativo onde o profissional seleciona a data de atendimento passada; o sistema deriva e exibe a competência correspondente e valida a janela de 4 competências antes de permitir o envio.
+
+---
+
 ## DEC-008 — Modelo multi-tenant hierárquico: profissional → unidade → prefeitura
 
 **O que:** cada profissional de saúde terá uma conta vinculada ao seu CNS. A unidade de saúde (CNES) terá acesso ao dashboard de produção total da unidade, com capacidade de edição. A prefeitura/SMS visualizará a produção consolidada de todas as unidades antes de fechar e enviar o arquivo BPA ao Ministério da Saúde.
