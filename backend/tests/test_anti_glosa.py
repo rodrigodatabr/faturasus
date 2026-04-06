@@ -18,7 +18,7 @@ from app.services.anti_glosa import RegistroContext, validar_registro
 CNES_SEM_HAB = "0000001"
 COMPETENCIA = "202603"
 
-# UUID fictício do profissional seed (ANA LUCIA — CBO 225125)
+# UUID fixo do profissional seed (Vanessa Gonçalves — CBO 322205)
 PROFISSIONAL_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
@@ -109,7 +109,7 @@ def _ctx(**kwargs) -> RegistroContext:
     defaults = dict(
         co_procedimento="0301010110",
         cnes=CNES_SEM_HAB,
-        cbo="225125",
+        cbo="322205",
         co_registro="01",
         dt_atendimento=date(2026, 3, 15),
         competencia=COMPETENCIA,
@@ -264,7 +264,7 @@ async def test_duplicidade(db_session: AsyncSession, proc_sem_habilitacao):
              cbo, dt_atendimento, competencia, quantidade, status, criado_por)
         VALUES
             (:id, NULL, :cns_hash, '01', :cnes, :co_proc,
-             '225125', '2026-03-15', :comp, 1, 'confirmado', :prof_id)
+             '322205', '2026-03-15', :comp, 1, 'confirmado', :prof_id)
     """), {
         "id": reg_id,
         "cns_hash": cns_hash_teste,
@@ -279,7 +279,7 @@ async def test_duplicidade(db_session: AsyncSession, proc_sem_habilitacao):
         ctx = _ctx(
             co_procedimento=proc_sem_habilitacao,
             cns_hash=cns_hash_teste,
-            cbo="225125",
+            cbo="322205",
             dt_atendimento=date(2026, 3, 15),
         )
         resultado = await validar_registro(ctx, db_session)

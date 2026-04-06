@@ -99,9 +99,13 @@ Regras:
 - O PROCEDIMENTO clínico principal tem prioridade sobre a VIA DE ADMINISTRAÇÃO.
   "oral", "injetável", "via oral" descrevem rota — não são o procedimento em si.
   Ex: "quimioterapia oral" → "quimioterapia antineoplásica adultos" (não "medicamento via oral").
-- Corrija erros fonéticos comuns:
+- Corrija erros fonéticos e mapeamentos de terminologia coloquial→SIGTAP:
   "papa nicolau" → "exame citopatológico colo utero rastreamento cervical"
   "gesso no braço" → "imobilização gessada fratura membro superior"
+  "injeção no joelho" → "infiltração cavidade sinovial joelho"
+  "injeção intra-articular" → "infiltração cavidade sinovial"
+  "nebulização" ou "nebulizacao" → "inalação nebulização"
+  "vacina" ou "vacinação" (qualquer tipo) → "administração imunoderivados"
 
 Responda SOMENTE com JSON: {"query": "terminologia técnica aqui"}"""
 
@@ -115,6 +119,15 @@ Regras:
 - Quando a descrição se refere a uma TERAPIA (administração de medicamento, inalação terapêutica,
   infusão), prefira o procedimento terapêutico — não um procedimento de DIAGNÓSTICO POR IMAGEM
   que use o mesmo meio físico (ex: cintilografia por inalação é diagnóstico, não terapia).
+- Quando a descrição descreve um ATO CLÍNICO (nebulizar, injetar, infiltrar, administrar,
+  aplicar), prefira o procedimento que nomeia o ATO CLÍNICO (ex: "INALAÇÃO / NEBULIZAÇÃO",
+  "INFILTRACAO DE SUBSTANCIAS EM CAVIDADE SINOVIAL") em vez de um MEDICAMENTO ou INSUMO
+  utilizado nele. Medicamentos e insumos têm nomes com concentração ou forma farmacêutica
+  (ex: "300MG/5ML", "SOLUÇÃO", "AMPOLA", "FRASCO", "COMPRIMIDO") — não são procedimentos.
+- Quando a descrição descreve uma intervenção AMBULATORIAL SIMPLES (infiltração, injeção
+  articular, punção), prefira o procedimento clínico ambulatorial em vez de procedimento
+  CIRÚRGICO com terminologia similar. Ex: "RETIRADA DE CORPO ESTRANHO INTRA-ARTICULAR" é
+  cirúrgico; "INFILTRACAO DE SUBSTANCIAS EM CAVIDADE SINOVIAL" é o ato ambulatorial.
 - Considere tanto o texto original quanto a terminologia técnica expandida.
 - Leia a descrição de cada candidato para distinguir procedimentos clinicamente similares.
 
@@ -170,10 +183,15 @@ async def _buscar_substring(
     session: AsyncSession,
     limit: int,
 ) -> list[dict]:
-    """Busca por substring normalizada em no_procedimento (PostgreSQL nativo, sem extensão)."""
-    termo_norm = _normalizar(termo)
-    # LOWER() embutido no SQL — termo_norm é gerado internamente, não vem do usuário diretamente.
-    # Usamos parâmetro nomeado para o termo de busca (seguro contra SQL injection).
+    """Busca por substring em no_procedimento (PostgreSQL nativo, sem extensão).
+
+    Roda duas queries em paralelo: uma com o termo normalizado (sem acento) e outra com o
+    termo em lowercase preservando acentos. Necessário porque LOWER() no PostgreSQL preserva
+    acentos, então 'inalacao' não bate com 'inalação / nebulização'.
+    """
+    termo_norm = _normalizar(termo)      # sem acento, para nomes sem acento (ex: INALACAO)
+    termo_lower = termo.lower()          # com acento, para nomes com acento (ex: INALAÇÃO)
+
     substr_sql = text("""
         SELECT
             p.co_procedimento,
@@ -186,12 +204,21 @@ async def _buscar_substring(
             ON d.co_procedimento = p.co_procedimento
            AND d.dt_competencia = p.dt_competencia
         WHERE p.dt_competencia = :competencia
-          AND LOWER(p.no_procedimento) LIKE '%' || :termo || '%'
+          AND (
+              LOWER(p.no_procedimento) LIKE '%' || :termo_norm || '%'
+              OR LOWER(p.no_procedimento) LIKE '%' || :termo_lower || '%'
+          )
         LIMIT :limit
     """)
     result = await session.execute(
         substr_sql,
-        {"competencia": competencia, "termo": termo_norm, "limit": limit, "ds_max": DS_PROC_MAX_CHARS},
+        {
+            "competencia": competencia,
+            "termo_norm": termo_norm,
+            "termo_lower": termo_lower,
+            "limit": limit,
+            "ds_max": DS_PROC_MAX_CHARS,
+        },
     )
     return [
         {

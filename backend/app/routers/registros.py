@@ -152,21 +152,22 @@ async def criar_registro(
     """)
 
     try:
-        async with session.begin():
-            await session.execute(insert_sql, {
-                "id": novo_id,
-                "cns_hash": cns_hash,
-                "co_registro": body.co_registro,
-                "cnes": body.cnes,
-                "co_procedimento": body.co_procedimento,
-                "cbo": body.cbo,
-                "dt_atendimento": body.dt_atendimento,
-                "competencia": body.competencia,
-                "quantidade": body.quantidade,
-                "status": status,
-                "criado_por": body.profissional_id,
-            })
+        await session.execute(insert_sql, {
+            "id": novo_id,
+            "cns_hash": cns_hash,
+            "co_registro": body.co_registro,
+            "cnes": body.cnes,
+            "co_procedimento": body.co_procedimento,
+            "cbo": body.cbo,
+            "dt_atendimento": body.dt_atendimento,
+            "competencia": body.competencia,
+            "quantidade": body.quantidade,
+            "status": status,
+            "criado_por": body.profissional_id,
+        })
+        await session.commit()
     except Exception as exc:
+        await session.rollback()
         raise HTTPException(status_code=500, detail=f"Erro ao persistir registro: {exc}") from exc
 
     return RegistroResponse(

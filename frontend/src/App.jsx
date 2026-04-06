@@ -19,8 +19,8 @@ const DEMO_PATIENT = {
 
 const DEMO_PROFISSIONAL = {
   id: "00000000-0000-0000-0000-000000000001",
-  cbo: "225125",
-  cnes: "0000001",
+  cbo: "322205",   // Técnico em Enfermagem
+  cnes: "2139200", // PSF Vila Nova — Três Pontas/MG
 };
 
 const DEMO_COMPETENCIA = "202603";

@@ -18,6 +18,14 @@ O FaturaSUS é um assistente PWA de captura e faturamento de produção ambulato
 
 **Escopo:** toda a produção ambulatorial (BPA-C e BPA-I), abrangendo tanto MAC quanto Atenção Básica/PAB. O sistema separa automaticamente por financiamento na exportação. Fora de escopo: internações (AIH) e APAC.
 
+### Três diferenciais centrais
+
+**1. Classificação automática SIGTAP:** o profissional descreve em linguagem natural — o sistema resolve o código. Sem memorizar tabela, sem busca manual.
+
+**2. Validação anti-glosa em tempo real:** CBO × CNES × instrumento × FPO × duplicidade verificados antes de persistir. Erros que seriam descobertos só no SIA são bloqueados na captura.
+
+**3. Bundle de procedimentos complementares:** ao classificar o procedimento principal, o sistema sugere proativamente os procedimentos correlatos que tipicamente acompanham aquele atendimento. O profissional confirma em vez de lembrar. O padrão mais recorrente de perda identificado em campo não é procedimento errado — é registro incompleto por omissão. Exemplo real (Esteio/RS): pré-natal lançado sem aferição de pressão arterial, peso, altura uterina e demais itens do bundle. Cada omissão deixa de computar para indicadores e repasse.
+
 ### Usuários
 
 | Perfil | Papel | Canal |
@@ -26,6 +34,16 @@ O FaturaSUS é um assistente PWA de captura e faturamento de produção ambulato
 | Responsável pelo faturamento | Revisa, corrige e exporta o BPA mensal | Dashboard Web |
 | Gestor / Secretário de Saúde | Acompanha produção e resultados | Dashboard Web |
 | Administrador da unidade | Cadastra profissionais e configura permissões | Dashboard Web |
+
+---
+
+## 1b. Etapa B — Expansão para Municípios com e-SUS
+
+A Etapa B adapta o FaturaSUS para municípios que já utilizam o e-SUS PEC — o segmento mais amplo do mercado. O e-SUS não elimina o faturamento: o arquivo BPA precisa ser gerado separadamente e, hoje, isso é feito de forma manual por um digitador a partir dos atendimentos registrados no PEC. Esse gargalo é o problema que a Etapa B resolve.
+
+Dois mecanismos complementares entregam o produto nesse contexto. Uma **extensão Chrome** abre um painel lateral dentro do próprio PEC, lê o contexto do atendimento via GraphQL interno e expõe os diferenciais do FaturaSUS — classificação automática SIGTAP, validação anti-glosa, bundle de procedimentos — sem tirar o profissional do sistema. Um **job agendado** acessa o PostgreSQL local do PEC (ou instância institucional) e gera o arquivo BPA automaticamente ao fim da competência, eliminando por completo a dependência do digitador.
+
+A Etapa A vem primeiro porque valida o produto e gera receita no segmento de entrada — municípios sem PEC ou com BPA Magnético puro —, antes de abordar a integração mais complexa com o e-SUS. Municípios que utilizam sistemas integrados privados (GEMUS, SIMUS, MV) ficam fora do escopo desta etapa.
 
 ---
 
@@ -61,6 +79,9 @@ O FaturaSUS é um assistente PWA de captura e faturamento de produção ambulato
 **Embeddings + LLM (duas etapas):**
 pgvector retorna os 15 candidatos mais próximos semanticamente. Claude recebe esses 15 + contexto (CBO, CNES) e classifica. ~10× mais barato e mais preciso que enviar os 4.600+ procedimentos por requisição.
 
+**Contexto conversacional para procedimentos recentes _(v3 / pós-Etapa B)_:**
+Quando o procedimento classificado tiver competência de inclusão na SIGTAP nos últimos 3 meses, a resposta do modelo menciona de forma natural que "esse procedimento é recente e substituiu o procedimento X", dando ao profissional contexto sobre a mudança sem exigir que conheça a tabela. Não é alerta ou pop-up — é parte do fluxo conversacional de confirmação.
+
 ### Atualização do SIGTAP — Cron Job Diário
 
 Cron job diário às 3h (Brasília):
@@ -80,8 +101,8 @@ Cron job diário às 3h (Brasília):
 **Fluxo principal:**
 
 1. **Identificação do paciente:** app abre com o paciente do turno já carregado (identificado via CADSUS). Para registrar um novo paciente, o profissional toca em "Próximo paciente" após confirmar o registro anterior — o app então solicita o scan do Cartão SUS ou a digitação do CNS como fallback. App lê o CNS e consulta CADSUS v5. Exibe: *"Maria da Silva, F, 45 anos, Gravataí-RS"*. Profissional confirma.
-2. **Áudio:** profissional pressiona botão e descreve o procedimento em linguagem natural. Whisper transcreve. Áudio permanece em memória volátil do browser (nunca enviado ao servidor ou persistido em disco) para permitir regravação caso a transcrição esteja incorreta.
-3. **Confirmação:** app exibe código SIGTAP identificado + descrição. Se houver ambiguidade, apresenta opções com botões de resposta rápida. Profissional confirma ou corrige. **Áudio é descartado (buffer liberado) ao confirmar** — apenas o texto estruturado é armazenado.
+2. **Áudio:** profissional pressiona botão e descreve o procedimento em linguagem natural — podendo mencionar mais de um procedimento no mesmo áudio. Whisper transcreve. O backend segmenta, classifica e retorna cada procedimento identificado separadamente. Áudio permanece em memória volátil do browser (nunca enviado ao servidor ou persistido em disco) para permitir regravação caso a transcrição esteja incorreta.
+3. **Confirmação:** app exibe cada código SIGTAP identificado + descrição. Se houver ambiguidade, apresenta opções com botões de resposta rápida. Para cada procedimento confirmado, o sistema exibe o bundle de procedimentos correlatos sugeridos para confirmação. Profissional confirma ou corrige. **Áudio é descartado (buffer liberado) ao confirmar** — apenas o texto estruturado é armazenado.
 4. **Alternativas:** captura por texto (digitação livre) e leitura de código de barras SIGTAP via câmera.
 
 > O profissional NÃO precisa saber o código SIGTAP. Descreve em linguagem natural — ex: *"fiz curativo complexo em dois pacientes"* — e o sistema resolve.
@@ -226,6 +247,8 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 | Cache de sessão CADSUS (volátil, descartado ao encerrar turno) | ✅ MVP |
 | Busca semântica SIGTAP (pgvector) | ✅ MVP |
 | Classificação por Claude Haiku | ✅ MVP |
+| Bundle de procedimentos complementares (sugestão proativa ao classificar o principal) | ✅ MVP |
+| Múltiplos procedimentos em um único áudio (segmentação e classificação separada) | ✅ MVP |
 | Validação anti-glosa completa (6 cruzamentos) | ✅ MVP |
 | Cron job diário SIGTAP com diff de hash | ✅ MVP |
 | Importação SCNES (ZIP CSV + HB.dbc por UF): profissionais, habilitações, serviços + vinculação de login + RBAC | ✅ MVP |
@@ -236,6 +259,7 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 | Anonimização SHA-256 + criptografia em repouso | ✅ MVP |
 | Canal WhatsApp como fallback | v2 |
 
+| Contexto conversacional para procedimentos recentes na SIGTAP (menciona substituição de forma natural) | v3 |
 | Validação de CID × procedimento | v2 |
 | Relatório técnico automatizado para aumento do teto MAC | v2 |
 | Integração CMD via RNDS (quando fase 3 obrigatória) | v2 |
@@ -251,7 +275,7 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 |---|---|
 | Latência ponta a ponta | < 5s do envio do áudio até a confirmação |
 | Disponibilidade | 99,5% de uptime mensal |
-| Precisão SIGTAP | > 90% de classificação correta sem intervenção humana (meta piloto) — golden set em `docs/evals_classificacao.md`; acurácia atual ~50% |
+| Precisão SIGTAP | > 90% de classificação correta sem intervenção humana (meta piloto) — golden set em `docs/evals_classificacao.md`; acurácia atual 11/11 (100%) em golden set de 11 casos (competência 202603) |
 | Auditabilidade | 100% das operações sobre dados sensíveis rastreadas |
 | Multi-tenancy | Dados de cada município completamente isolados |
 | Exportação BPA | 100% de conformidade com layout DATASUS — aceito sem rejeição no SIA |

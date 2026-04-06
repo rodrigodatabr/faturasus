@@ -35,16 +35,19 @@ WHERE no_procedimento ILIKE '%inalação%nebulização%'
 | 6 | fiz um gesso no braco | TRATAMENTO CONSERVADOR DE FRATURA EM MEMBRO SUPERIOR COM IMOBILIZAÇÃO | — | TRATAMENTO CONSERVADOR DE FRATURA EM MEMBRO SUPERIOR COM IMOBILIZAÇÃO | ✅ CORRETO | — |
 | 7 | ECG | ELETROCARDIOGRAMA | — | ELETROCARDIOGRAMA | ✅ CORRETO | — |
 | 8 | quimioterapia mama | QUIMIOTERAPIA DO CARCINOMA DE MAMA AVANÇADO -1ª LINHA | — | QUIMIOTERAPIA DO CARCINOMA DE MAMA AVANÇADO -1ª LINHA | ✅ CORRETO | — |
+| 9 | injeção no joelho | INFILTRACAO DE SUBSTANCIAS EM CAVIDADE SINOVIAL (ARTICULACAO, BAINHA TENDINOSA) | — | INFILTRACAO DE SUBSTANCIAS EM CAVIDADE SINOVIAL (ARTICULACAO, BAINHA TENDINOSA) | ✅ CORRETO | Fix passo 5b.1: exemplo em `_SYSTEM_EXPAND` + regra ambulatorial vs. cirúrgico em `_SYSTEM_CLASSIFY` |
+| 10 | vacina contra gripe | ADMINISTRAÇÃO DE IMUNODERIVADOS (ORAL E/OU PARENTERAL) | — | ADMINISTRAÇÃO DE IMUNODERIVADOS (ORAL E/OU PARENTERAL) | ✅ CORRETO | Único código de aplicação de vacina em 202603. ds_procedimento = "CONSISTE NA APLICAÇÃO DE VACINA/IMUNIZAÇÃO EM PACIENTES DOMICILIADOS." Fix: exemplo `"vacina" → "administração imunoderivados"` em `_SYSTEM_EXPAND` |
+| 11 | glicemia capilar | GLICEMIA CAPILAR | — | GLICEMIA CAPILAR | ✅ CORRETO | Fix passo 5b.1: bug de acento no fallback substring (`inalacao` ≠ `inalação`) corrigido em `_buscar_substring` (OR com termo_lower) |
 
 ## Resumo
 
 | Métrica | Valor |
 |---|---|
-| Total de casos válidos | 8 |
-| Corretos | 8/8 (100%) |
+| Total de casos válidos | 11 |
+| Corretos | 11/11 (100%) |
 | Meta PRD | >90% |
 
-**Meta atingida.** Todos os 8 casos corretos após ajuste de `_SYSTEM_CLASSIFY` (regra terapêutico vs. diagnóstico por imagem).
+**Meta atingida.** 11/11 após passo 5b.1: (1) exemplos de mapeamento coloquial→SIGTAP em `_SYSTEM_EXPAND`, (2) regras ato clínico vs. medicamento e ambulatorial vs. cirúrgico em `_SYSTEM_CLASSIFY`, (3) fix de acento no fallback substring em `_buscar_substring` (OR `LIKE '%:termo_lower%'`).
 
 ## Casos a adicionar (próxima rodada, para cruzar 90%)
 

@@ -167,6 +167,18 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 ---
 
+## DEC-012 — Gestão de transação no endpoint POST /registros: commit explícito, sem begin()
+
+**O que:** o endpoint `POST /registros` usa `await session.execute(...)` seguido de `await session.commit()` diretamente, sem encapsular em `async with session.begin()`.
+
+**Por quê:** o `validar_registro()` executa 8 queries em paralelo via `asyncio.gather` na mesma `AsyncSession`. O SQLAlchemy 2.x com asyncpg inicia uma transação implícita no primeiro `execute` — comportamento `autobegin`. Ao tentar abrir um `begin()` explícito após o `validar_registro()`, o SQLAlchemy levanta `A transaction is already begun on this Session`, resultando em HTTP 500 mesmo com o registro válido. O `commit()` direto funciona porque encerra a transação já aberta implicitamente. O `rollback()` no `except` garante que falhas no INSERT não deixem a transação em estado inconsistente.
+
+**O que não fazer:** usar `async with session.begin()` após `validar_registro()`. Não abrir `session.begin()` antes de chamar `validar_registro()` para "garantir controle" — o gather vai usar a mesma sessão e não há problema em executar queries dentro de uma transação já iniciada.
+
+**Referência:** `backend/app/routers/registros.py`, `backend/app/db.py` (`get_session`).
+
+---
+
 ## DEC-009 — CNS: hash SHA-256 vs. criptografia AES-256-GCM (em aberto)
 
 **O que:** a decisão atual é armazenar o CNS como hash SHA-256 (irreversível) por exigência da LGPD. Em algum momento surgiu uma referência a AES-256-GCM (reversível) — possivelmente ao analisar o layout SIGTAP.
