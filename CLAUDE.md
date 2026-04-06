@@ -40,21 +40,25 @@ Assistente PWA de faturamento ambulatorial SUS — toda a produção ambulatoria
 │   │   ├── routers/
 │   │   │   ├── health.py      # GET /health
 │   │   │   ├── transcricao.py # POST /transcricao (Whisper)
-│   │   │   └── busca.py       # GET /busca/procedimentos (pgvector)
+│   │   │   ├── busca.py       # GET /busca/procedimentos (pgvector)
+│   │   │   ├── classificacao.py # POST /classificar (Haiku)
+│   │   │   └── registros.py   # POST /registros (anti-glosa + persistência)
 │   │   ├── models/
 │   │   │   ├── __init__.py    # Re-exporta todos os models (Alembic + main.py)
 │   │   │   ├── sigtap.py      # 20 tabelas SIGTAP
 │   │   │   ├── cnes.py        # 4 tabelas CNES
 │   │   │   └── operacional.py # 4 tabelas operacionais (profissionais, registros, etc.)
 │   │   ├── seeds/
-│   │   │   └── seed_profissionais.py  # 5 profissionais fictícios + 1 CNES
+│   │   │   └── seed_profissionais.py  # profissionais fictícios + CNES demo
 │   │   ├── ingest/
 │   │   │   ├── sigtap.py              # Ingestão BDSIA → 20 tabelas sigtap_* (UPSERT, lotes de 500)
 │   │   │   ├── cnes.py                # Ingestão SCNES → 4 tabelas cnes_* (filtro --municipios por IBGE 6 dígitos)
 │   │   │   ├── embeddings.py          # Indexação SIGTAP → embeddings_procedimentos (OpenAI, lotes de 100)
 │   │   │   └── test_sigtap_dry_run.py # Valida layouts localmente sem banco
 │   │   ├── schemas/       # Pydantic schemas (vazio por ora)
-│   │   └── services/      # Lógica de negócio (vazio por ora)
+│   │   └── services/
+│   │       ├── classificacao.py  # Hybrid search (pgvector + substring) → Claude Haiku
+│   │       └── anti_glosa.py     # 8 verificações anti-glosa em asyncio.gather
 │   ├── alembic/
 │   │   ├── env.py         # Migrations async
 │   │   └── versions/
@@ -94,7 +98,7 @@ O protótipo frontend está hospedado na Railway:
 - ~~**Script de ingestão SCNES**~~ — `app/ingest/cnes.py`; filtro `--municipios` por código IBGE; ingerido para Naviraí-MS, Três Pontas-MG, Esteio-RS (903 est., 5.399 prof., 878 serv., 39 hab.)
 - ~~**Embeddings SIGTAP + busca semântica**~~ — `app/ingest/embeddings.py`; 4.980 procedimentos indexados localmente; migration `0002_ivfflat_embeddings` (IVFFlat); endpoint `GET /busca/procedimentos`. **Pendente no Railway:** rodar indexação e migration apontando para produção.
 - **Integração CADSUS v5** — SOAP real via barramento RNDS (sem cache persistente de pacientes; apenas cache volátil de sessão)
-- **Pipeline de registro** — Whisper → pgvector → Claude Haiku → validação anti-glosa
+- ~~**Pipeline de registro**~~ — Whisper → pgvector → Claude Haiku → validação anti-glosa → `POST /registros` persistindo em `registros_producao`
 - **Fontes de dados externas** — SIGTAP/BDSIA (cron diário), SCNES PF+HB (upload mensal), FPO (manual). Ver PRD §3.3
 - **Dashboard gerencial** — KPIs, drill-down, correção inline pelo faturista
 - **Geração BPA** — exportação `.PA` no layout magnético DATASUS com separação automática PAB/MAC
