@@ -615,7 +615,7 @@ export default function App() {
                     <RotateCcw size={13} /> Refazer
                   </button>
                 </div>
-              </BotMessage>
+              </BotMessage>}
             </>
           )}
 
