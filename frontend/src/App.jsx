@@ -17,6 +17,14 @@ const DEMO_PATIENT = {
   municipio: "Iguatama - MG",
 };
 
+const DEMO_PROFISSIONAL = {
+  id: "00000000-0000-0000-0000-000000000001",
+  cbo: "225125",
+  cnes: "0000001",
+};
+
+const DEMO_COMPETENCIA = "202603";
+
 
 function BotMessage({ children, typing, delay = 0 }) {
   const [visible, setVisible] = useState(delay === 0);
@@ -248,6 +256,8 @@ export default function App() {
   const [procedureErro, setProcedureErro] = useState(null);
   // Lista de procedimentos confirmados para o mesmo paciente
   const [procedures, setProcedures] = useState([]);
+  const [validacaoResultado, setValidacaoResultado] = useState(null);
+  const [validacaoLoading, setValidacaoLoading] = useState(false);
   const chatRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -372,9 +382,37 @@ export default function App() {
     setRecording(true);
   }
 
-  function handleConfirm() {
-    setConfirmed(true);
-    setTimeout(() => setBtnReady(true), 2000);
+  async function handleConfirm() {
+    setValidacaoLoading(true);
+    setValidacaoResultado(null);
+    setProcedureErro(null);
+    try {
+      const res = await fetch('/registros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          co_procedimento: procedure.codigo,
+          cnes: DEMO_PROFISSIONAL.cnes,
+          cbo: DEMO_PROFISSIONAL.cbo,
+          co_registro: '01',
+          dt_atendimento: new Date().toISOString().split('T')[0],
+          competencia: DEMO_COMPETENCIA,
+          cns: DEMO_PATIENT.cns.replace(/\s/g, ''),
+          quantidade: 1,
+          profissional_id: DEMO_PROFISSIONAL.id,
+        }),
+      });
+      const data = res.status === 422 ? (await res.json()).detail : await res.json();
+      setValidacaoResultado(data);
+      if (data.aprovado) {
+        setConfirmed(true);
+        setTimeout(() => setBtnReady(true), 2000);
+      }
+    } catch (e) {
+      setProcedureErro('Falha ao registrar procedimento. Tente novamente.');
+    } finally {
+      setValidacaoLoading(false);
+    }
   }
 
   function handleConcluir() {
@@ -398,6 +436,7 @@ export default function App() {
     setShowStats(false);
     setTranscricaoErro(null);
     setProcedureErro(null);
+    setValidacaoResultado(null);
     setStep(1);
   }
 
@@ -406,6 +445,7 @@ export default function App() {
     setConfirmed(false); setShowStats(false); setBtnReady(false);
     setTranscricaoTexto(''); setTranscricaoErro(null);
     setProcedure(null); setProcedureErro(null);
+    setValidacaoResultado(null);
     setProcedures([]);
   }
 
@@ -547,9 +587,11 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button
                     onClick={handleConfirm}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "none", background: GREEN, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                    disabled={validacaoLoading || confirmed}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 10, border: "none", background: validacaoLoading ? GRAY_TEXT : GREEN, color: "#fff", fontSize: 13, fontWeight: 700, cursor: validacaoLoading || confirmed ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 4, opacity: validacaoLoading || confirmed ? 0.7 : 1 }}
                   >
-                    <Check size={13} strokeWidth={3} /> Confirmar
+                    {validacaoLoading ? <Loader size={13} className="spin" /> : <Check size={13} strokeWidth={3} />}
+                    {validacaoLoading ? 'Validando…' : 'Confirmar'}
                   </button>
                   <button
                     onClick={() => { setStep(1); setProcedure(null); setTranscricaoTexto(''); setProcedureErro(null); setTranscricaoErro(null); }}
@@ -562,6 +604,34 @@ export default function App() {
             </>
           )}
 
+          {validacaoResultado && !validacaoResultado.aprovado && (
+            <BotMessage>
+              <div style={{ fontSize: 13, fontWeight: 700, color: RED, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <X size={14} strokeWidth={3} /> Registro bloqueado — corrija os problemas abaixo
+              </div>
+              {validacaoResultado.bloqueios.map((g, i) => (
+                <div key={i} style={{ background: "#FDEDEC", border: "1px solid #F5B7B1", borderRadius: 8, padding: "8px 10px", marginBottom: 6, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: RED, marginBottom: 2 }}>{g.mensagem}</div>
+                  <div style={{ color: "#922B21" }}>{g.detalhe}</div>
+                </div>
+              ))}
+            </BotMessage>
+          )}
+
+          {validacaoResultado && validacaoResultado.aprovado && validacaoResultado.alertas.length > 0 && (
+            <BotMessage>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#B7950B", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <AlertCircle size={14} /> Registro salvo com alertas para revisão
+              </div>
+              {validacaoResultado.alertas.map((a, i) => (
+                <div key={i} style={{ background: "#FEFDE7", border: "1px solid #F9E79F", borderRadius: 8, padding: "8px 10px", marginBottom: 6, fontSize: 12 }}>
+                  <div style={{ fontWeight: 700, color: "#9A7D0A", marginBottom: 2 }}>{a.mensagem}</div>
+                  <div style={{ color: "#7D6608" }}>{a.detalhe}</div>
+                </div>
+              ))}
+            </BotMessage>
+          )}
+
           {confirmed && (
             <BotMessage>
               <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 600, color: GREEN, display: "flex", alignItems: "center", gap: 5 }}>
@@ -570,6 +640,9 @@ export default function App() {
               <div style={{ fontSize: 12, marginBottom: 10 }}>
                 <CheckItem label={"CBO compat\u00EDvel"} value="Sim" />
                 <CheckItem label="CNES habilitado" value="Sim" />
+                {validacaoResultado?.registro_id && (
+                  <div style={{ fontSize: 11, color: GRAY_TEXT, marginTop: 4 }}>ID: {validacaoResultado.registro_id}</div>
+                )}
               </div>
 
               <div style={{ background: GRAY_BG, borderRadius: 10, padding: 12, marginBottom: 10, border: "1px solid #E0E0E0" }}>

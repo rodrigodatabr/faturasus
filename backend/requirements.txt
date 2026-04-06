@@ -11,3 +11,5 @@ aiofiles>=23.0,<25              # StaticFiles e FileResponse assíncronos
 dbc-to-dbf>=0.1                # leitura de .dbc DATASUS (HB por UF) — algoritmo blast puro Python
 dbfread>=2.0,<3                # leitura de .dbf após descompressão
 anthropic>=0.40,<1             # Claude Haiku (classificação SIGTAP)
+pytest>=8.0,<9                 # testes
+pytest-asyncio>=0.24,<1        # suporte async nos testes
