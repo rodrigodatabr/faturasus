@@ -19,11 +19,25 @@ const DEMO_PATIENT = {
 
 const DEMO_PROFISSIONAL = {
   id: "00000000-0000-0000-0000-000000000001",
-  cbo: "322205",   // Técnico em Enfermagem
-  cnes: "2139200", // PSF Vila Nova — Três Pontas/MG
+  cbo: "322205",         // Técnico em Enfermagem
+  cnes: "2139200",       // PSF Vila Nova — Três Pontas/MG
+  nome: "Vanessa Aparecida Gonçalves",
+  especialidade: "Técnica de Enfermagem",
+  estabelecimento: "PSF Vila Nova — Três Pontas/MG",
+  iniciais: "VG",
 };
 
-const DEMO_COMPETENCIA = "202603";
+// Competência derivada dinamicamente da data atual (AAAAMM)
+function competenciaAtual() {
+  const hoje = new Date();
+  return `${hoje.getFullYear()}${String(hoje.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function competenciaLabel() {
+  const hoje = new Date();
+  const meses = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  return `${meses[hoje.getMonth()]}/${hoje.getFullYear()}`;
+}
 
 
 function BotMessage({ children, typing, delay = 0 }) {
@@ -358,7 +372,7 @@ export default function App() {
           const classRes = await fetch('/classificar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ texto, competencia: '202603' }),
+            body: JSON.stringify({ texto, competencia: competenciaAtual() }),
           });
           if (!classRes.ok) throw new Error(await classRes.text());
           const { co_procedimento, no_procedimento, vl_total } = await classRes.json();
@@ -396,7 +410,7 @@ export default function App() {
           cbo: DEMO_PROFISSIONAL.cbo,
           co_registro: '01',
           dt_atendimento: new Date().toISOString().split('T')[0],
-          competencia: DEMO_COMPETENCIA,
+          competencia: competenciaAtual(),
           cns: DEMO_PATIENT.cns.replace(/\s/g, ''),
           quantidade: 1,
           profissional_id: DEMO_PROFISSIONAL.id,
@@ -486,15 +500,15 @@ export default function App() {
         {/* PROFESSIONAL BADGE */}
         <div style={{ background: "#fff", padding: "8px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #ECECEC", flexShrink: 0 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: BLUE_LIGHT, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: BLUE }}>CM</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: BLUE }}>{DEMO_PROFISSIONAL.iniciais}</span>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#222" }}>Dra. Daniela Cerveira Poletto</div>
-            <div style={{ fontSize: 11, color: GRAY_TEXT }}>{"Gastroenterologista \u2022 Policl\u00EDnica Iguatama"}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#222" }}>{DEMO_PROFISSIONAL.nome}</div>
+            <div style={{ fontSize: 11, color: GRAY_TEXT }}>{DEMO_PROFISSIONAL.especialidade} • {DEMO_PROFISSIONAL.estabelecimento}</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: GREEN }}>Mar/2026</div>
-            <div style={{ fontSize: 10, color: GRAY_TEXT }}>487 registros</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: GREEN }}>{competenciaLabel()}</div>
+            <div style={{ fontSize: 10, color: GRAY_TEXT }}>CNES {DEMO_PROFISSIONAL.cnes}</div>
           </div>
         </div>
 
@@ -505,7 +519,7 @@ export default function App() {
           {step === 0 && !scanning && (
             <BotMessage>
               <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                {"Ol\u00E1, Dra. Daniela! Escaneie o cart\u00E3o SUS do paciente para come\u00E7ar o registro."}
+                {`Olá, ${DEMO_PROFISSIONAL.nome.split(" ")[0]}! Escaneie o cartão SUS do paciente para começar o registro.`}
               </div>
             </BotMessage>
           )}
