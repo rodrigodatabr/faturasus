@@ -340,12 +340,27 @@ async def validar_registro(ctx: RegistroContext, session: AsyncSession) -> Resul
     Bloqueios e alertas são disparados simultaneamente via asyncio.gather.
     Retorna ResultadoValidacao com aprovado=False se houver qualquer bloqueio.
     """
+    # B1–B4 consultam tabelas SIGTAP filtradas por dt_competencia. Se a competência
+    # do registro (ex: 202604) ainda não foi ingerida, as queries retornam vazio e
+    # todas as regras passam silenciosamente. Usa-se a competência mais recente
+    # disponível no SIGTAP — igual ao padrão adotado no classificador (DEC-014/DEC-015).
+    row = await session.execute(
+        text("SELECT MAX(dt_competencia) FROM sigtap_rl_proc_ocupacao")
+    )
+    comp_sigtap = row.scalar() or ctx.competencia
+    if comp_sigtap != ctx.competencia:
+        logger.info(
+            "anti_glosa: competência do registro %s sem dados SIGTAP — usando %s para B1–B4",
+            ctx.competencia, comp_sigtap,
+        )
+    ctx_sigtap = ctx.model_copy(update={"competencia": comp_sigtap})
+
     bloqueio_tasks = [
-        _check_b1_cbo(ctx, session),
-        _check_b2_habilitacao(ctx, session),
-        _check_b3_servico(ctx, session),
-        _check_b4_instrumento(ctx, session),
-        _check_b5_retroatividade(ctx, session),
+        _check_b1_cbo(ctx_sigtap, session),
+        _check_b2_habilitacao(ctx_sigtap, session),
+        _check_b3_servico(ctx_sigtap, session),
+        _check_b4_instrumento(ctx_sigtap, session),
+        _check_b5_retroatividade(ctx, session),   # usa competência real
     ]
     alerta_tasks = [
         _check_a1_duplicidade(ctx, session),
