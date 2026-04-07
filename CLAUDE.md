@@ -94,7 +94,7 @@ O protótipo frontend está hospedado na Railway:
 - ~~**Backend FastAPI**~~ — scaffold criado (sem auth/JWT ainda)
 - ~~**Layouts SIGTAP + SCNES**~~ — mapeados em `docs/`; ver `roadmap.md` passo 0c antes de criar o schema
 - ~~**Banco PostgreSQL**~~ — 28 tabelas criadas (SIGTAP + CNES + operacional); migration aplicada no Railway; pgvector ativo
-- ~~**Script de ingestão SIGTAP**~~ — `app/ingest/sigtap.py`; executado contra Railway (competência 202603): 20/20 tabelas OK, 4980 procedimentos, 194720 rl_proc_ocupacao
+- ~~**Script de ingestão SIGTAP**~~ — `app/ingest/sigtap.py`; executado contra Railway: 20/20 tabelas OK, 4980 procedimentos, 194720 rl_proc_ocupacao. O classificador e o anti-glosa usam sempre `MAX(dt_competencia)` das tabelas SIGTAP — nunca a competência do registro (DEC-014, DEC-015)
 - ~~**Script de ingestão SCNES**~~ — `app/ingest/cnes.py`; filtro `--municipios` por código IBGE; ingerido para Naviraí-MS, Três Pontas-MG, Esteio-RS (903 est., 5.399 prof., 878 serv., 39 hab.)
 - ~~**Embeddings SIGTAP + busca semântica**~~ — `app/ingest/embeddings.py`; 4.980 procedimentos indexados localmente; migration `0002_ivfflat_embeddings` (IVFFlat); endpoint `GET /busca/procedimentos`. **Pendente no Railway:** rodar indexação e migration apontando para produção.
 - **Integração CADSUS v5** — SOAP real via barramento RNDS (sem cache persistente de pacientes; apenas cache volátil de sessão)

@@ -175,7 +175,19 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 **O que não fazer:** filtrar `embeddings_procedimentos.dt_competencia` pela competência do mês enviada pelo frontend. Não confundir a competência do retrieval (sempre a mais recente disponível) com a competência do registro (derivada da `dt_atendimento`).
 
-**Referência:** `backend/app/services/classificacao.py` (`_buscar_candidatos_hybrid`), DEC-013.
+**Referência:** `backend/app/services/classificacao.py` (`_buscar_candidatos_hybrid`), DEC-013, DEC-015.
+
+---
+
+## DEC-015 — Anti-glosa usa competência SIGTAP mais recente para checagens B1–B4
+
+**O que:** as verificações B1 (CBO), B2 (habilitação), B3 (serviço) e B4 (instrumento) consultam tabelas SIGTAP filtradas por `dt_competencia`. Em vez de usar a competência do registro recebida pelo `/registros`, o serviço busca `MAX(dt_competencia) FROM sigtap_rl_proc_ocupacao` no início de `validar_registro()` e usa esse valor para todas as checagens B1–B4. B5 (retroatividade) e os alertas A1–A2 (duplicidade, FPO) continuam usando a competência real do registro.
+
+**Por quê:** o mesmo problema da DEC-014: entre a virada de mês e a nova ingestão SIGTAP, não há dados para a competência nova. Com `dt_competencia = '202604'` e dados só até `202603`, todas as queries retornam vazio — o anti-glosa interpreta silenciosamente como "sem restrição" e aprova tudo. B1–B4 verificam regras estruturais do SIGTAP (quais CBOs, habilitações e instrumentos são válidos para cada procedimento) que não mudam significativamente mês a mês — usar a competência mais recente disponível é correto e infinitamente melhor que não validar nada.
+
+**O que não fazer:** passar `ctx.competencia` diretamente às queries B1–B4 sem verificar se existem dados para essa competência. Usar `MAX` de uma tabela operacional (`registros_producao`) em vez de SIGTAP — o MAX deve vir de uma tabela SIGTAP para refletir a última ingestão do BDSIA.
+
+**Referência:** `backend/app/services/anti_glosa.py` (`validar_registro`), DEC-014.
 
 ---
 
