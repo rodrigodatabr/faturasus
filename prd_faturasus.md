@@ -261,7 +261,7 @@ Acesso via barramento RNDS. Requer credenciamento do estabelecimento em `servico
 
 | Contexto conversacional para procedimentos recentes na SIGTAP (menciona substituição de forma natural) | v3 |
 | Validação de CID × procedimento | v2 |
-| Relatório técnico automatizado para aumento do teto MAC | v2 |
+| Relatório técnico automatizado para aumento do teto MAC — inclui diagnóstico de subregistro (comparação de 2 anos de produção PA via FTP DATASUS, lógica de queda >50%, gap estimado por valor SIGTAP, separação MAC/FAEC). Etapa pré-contrato: página pública no site DataBrasil gera leads — secretário solicita diagnóstico do próprio município antes de fechar contrato; backend FaturaSUS processa em background e envia CSV por email. Etapa pós-contrato: mesma engine exposta no dashboard gerencial do FaturaSUS com comparativo de teto MAC vigente. Campos reais dos arquivos PA: `PA_MUNPCN` (residência) e `PA_TPFIN` (financiamento) — ver DEC-016. | v2 (em desenvolvimento — 7a concluído) |
 | Integração CMD via RNDS (quando fase 3 obrigatória) | v2 |
 | Módulo APAC (alta complexidade) | v2 |
 | OCR de fichas de atendimento por foto | v2 |

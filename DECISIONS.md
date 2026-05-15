@@ -215,6 +215,25 @@ A alternativa mais citada na literatura — fine-tunar um modelo de linguagem es
 
 ---
 
+## DEC-016 — Campos reais do arquivo PA do DATASUS diferem da documentação
+
+**O que:** os campos de município de residência e tipo de financiamento no arquivo PA (Produção Ambulatorial) do DATASUS têm nomes diferentes do que consta na documentação oficial e no PySUS:
+
+| Documentado | Campo real (verificado em PAMS2301.dbc) |
+|---|---|
+| `PA_MUNRES` | `PA_MUNPCN` — município de residência do paciente |
+| `PA_FINANC` | `PA_TPFIN` — tipo de financiamento |
+
+**Por quê registrar:** a documentação DATASUS/PySUS usa `PA_MUNRES` e `PA_FINANC` em vários materiais de referência. A inspeção direta do arquivo real (PAMS2301.dbc, MS, janeiro de 2023, 631.917 registros) não contém esses campos — os campos acima são os equivalentes corretos. Usar os nomes documentados resulta em `None` para todos os registros sem nenhum erro explícito.
+
+**O que não fazer:** confiar em materiais de terceiros (PySUS docs, tutoriais) sobre os nomes dos campos PA sem validar contra o arquivo real. Sempre inspecionar `DBF.field_names` ao trabalhar com novo estado ou ano.
+
+**Status de validação:** confirmado para MS (2023). Validar para outros estados antes de assumir que são universais — o layout pode variar por UF/período.
+
+**Referência:** `docs/prompt_diagnostico_subregistro.md` (atualizado), `backend/app/ingest/sia_producao.py` (7b/7c — a construir).
+
+---
+
 ## DEC-009 — CNS: hash SHA-256 vs. criptografia AES-256-GCM (em aberto)
 
 **O que:** a decisão atual é armazenar o CNS como hash SHA-256 (irreversível) por exigência da LGPD. Em algum momento surgiu uma referência a AES-256-GCM (reversível) — possivelmente ao analisar o layout SIGTAP.

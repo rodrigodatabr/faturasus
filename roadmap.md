@@ -27,37 +27,42 @@ Estratégia: construir o núcleo técnico com dados mockados até ter um protót
 - ✅ **4 — Pipeline de classificação com Claude Haiku** — `POST /classificar`: query expansion (Haiku) → embedding → pgvector top-15 → Haiku classifica. Frontend substituiu `GET /busca/procedimentos` + `resultados[0]` por `POST /classificar`. Fix: `_extrair_json()` remove markdown fence da resposta do Haiku. Ver DEC-004.
 - ✅ **5 — Refinamentos de frontend para demo** — App abre no step 1 (paciente hardcoded já identificado). Botão "Escanear cartão" substituído por "Adicionar próximo paciente" no dashboard pós-confirmação (com label explicando que é integração futura). Desambiguação baseada no procedimento classificado pelo Haiku (não hardcoded). Data dinâmica. Input de texto do rodapé removido (não funcional).
 - ✅ **5b — Revisão da estratégia de retrieval SIGTAP** — 8/8 (100%) no golden set (competência 202603). TOP_K 15→30; hybrid search (pgvector + substring fallback com RRF); prompts revisados (query expansion + orientação terapêutico vs. diagnóstico por imagem em `_SYSTEM_CLASSIFY`). Caso resolvido: "nebulizacao" → INALAÇÃO/NEBULIZAÇÃO. Ver DEC-011, `docs/evals_classificacao.md`.
-
-### Em andamento / A fazer
-
-- **5b.1 — Ajuste do classificador: procedimento vs. medicamento/insumo** *(dep: 5b)* — Testes em produção revelaram 2 erros persistentes: (1) "Nebulização" → TOBRAMICINA (medicamento) em vez de INALAÇÃO/NEBULIZAÇÃO (procedimento); (2) "Injeção no joelho" → RETIRADA DE CORPO ESTRANHO em vez de INFILTRAÇÃO ARTICULAR. Raiz: `_SYSTEM_CLASSIFY` não distingue procedimento clínico de medicamento/insumo. Também adicionar glicemia capilar ao golden set (resultado discutível: retornou curva glicêmica em vez de glicemia pontual). Ver prompt no fim deste arquivo.
+- ✅ **5b.1 — Ajuste do classificador: procedimento vs. medicamento/insumo** *(dep: 5b)* — Testes em produção revelaram 2 erros persistentes: (1) "Nebulização" → TOBRAMICINA (medicamento) em vez de INALAÇÃO/NEBULIZAÇÃO (procedimento); (2) "Injeção no joelho" → RETIRADA DE CORPO ESTRANHO em vez de INFILTRAÇÃO ARTICULAR. Raiz: `_SYSTEM_CLASSIFY` não distingue procedimento clínico de medicamento/insumo. Também adicionar glicemia capilar ao golden set (resultado discutível: retornou curva glicêmica em vez de glicemia pontual). Ver prompt no fim deste arquivo.
 - ✅ **6 — Validação anti-glosa** *(dep: 1a, 1b, 1c, 5b.1)* — CBO, habilitação, serviço CNES, instrumento, compatibilidade, FPO, duplicidade. `POST /registros` com 8 verificações. Ver `docs/prompt_passo6_anti_glosa.md` e `docs/anti_glosa_fontes_normativas.md`.
 - ✅ **6b — Preparação da demo anti-glosa** *(dep: 6)* — Cenário curado com dados reais do banco: Vanessa Gonçalves (CBO 322205, técnica de enfermagem) no PSF Vila Nova — Três Pontas/MG (CNES 2139200). Seed simplificado para 1 profissional. Frontend atualizado. Roteiro documentado em `docs/roteiro_demo_anti_glosa.md`: aferição de PA, glicemia capilar e coleta de material passam; consulta médica (CBO incompatível) e biópsia de corpo vertebral (habilitação ausente) bloqueiam.
-- **7 — Desambiguação** *(dep: 5, 5b.1)* — **7a — ambiguidade semântica (top-3):** backend retorna top-3 candidatos quando score de confiança estiver abaixo de threshold (definir). Frontend exibe quick-reply buttons — padrão já existe no protótipo mockado. Ex: colonoscopia com/sem biópsia. **7b — detalhe faltante:** Haiku detecta quando o texto não tem informação suficiente para classificar (lateralidade, quantidade, complexidade de curativo) e devolve uma pergunta. Frontend exibe como mensagem do bot; profissional responde; backend reclassifica com contexto completo.
-- **8 — Bundle de procedimentos complementares** *(dep: 4, 5b.1)* — Ao classificar o procedimento principal, o Haiku sugere proativamente os procedimentos que tipicamente acompanham aquele tipo de atendimento (ex: pré-natal → PA, peso, altura uterina). O profissional confirma o bundle em vez de lembrar item a item. Será necessário pesquisa profunda para entendimento de quais procedimentos são complementares. Aproveita a infraestrutura do classificador com prompt específico de bundling.
-- **9 — Geração e validação do arquivo BPA** *(dep: 6, 7, 8)* — Layout magnético DATASUS, separação PAB/MAC
-- **10 — Ambiente e-SUS local (Docker)** *(dep: 9)* — Subir instância local via https://github.com/filiperochalopes/esus-pec-docker. Quando o BPA standalone estiver válido, o custo marginal de gerar o mesmo BPA a partir do PostgreSQL do PEC local é baixo — e o protótipo passa a cobrir os dois mercados. Mapeamento do schema PostgreSQL do PEC é pré-requisito (ver Investigações pendentes).
-- **10b — Extensão Chrome — assistente de preenchimento** *(dep: 10)* — Painel lateral que abre automaticamente na tela de procedimentos do PEC. Lê contexto do atendimento (CID, CBO, perfil do paciente) via API GraphQL interna do PEC (local) e entrega os diferenciais do FaturaSUS sem tirar o profissional do sistema.
-- **11 — Dashboard + drill-down** *(dep: 9)* — KPIs, correção inline pelo faturista
-- **12 — Exportação e histórico** *(dep: 9, 11)* — Consulta e reenvio de lotes
-- **13 — Múltiplos procedimentos em um único áudio** *(dep: 3, 4)* — O backend segmenta um único áudio em múltiplos procedimentos, classifica cada um separadamente e retorna para confirmação individual. Comportamento testado em campo: profissionais naturalmente descrevem mais de um procedimento no mesmo registro de voz. Otimização UX — implementar após BPA estável.
-- **14 — Cron SIGTAP diário** *(dep: 9)* — Só faz sentido automatizar após BPA validado
+- ✅ **7a — Mapeamento MAC/FAEC no banco** *(independente do fluxo principal — prospecção/ROI)* — View `vw_procedimentos_financiamento` criada via migration `0003_financiamento_view`. Join direto em `sigtap_procedimentos.co_financiamento` (não existe tabela `sigtap_rl_proc_financiamento`). Resultado: 4.980 procedimentos — MAC (06): 3.681 | FAEC (04): 495 | AB (01): 191 | Farmácia (02): 359 | Incentivo MAC (05): 57 | Vigilância (07): 185 | Gestão (08): 12. `vl_unitario_sigtap = (vl_sa + vl_sp) / 100.0`. Ver `docs/prompt_diagnostico_subregistro.md`. **Atenção:** campos reais no arquivo PA do DATASUS são `PA_MUNPCN` (não `PA_MUNRES`) e `PA_TPFIN` (não `PA_FINANC`) — confirmado por inspeção do PAMS2301.dbc.
+
+### A fazer
+
+
+- **7b — Ingestão temporária da produção PA** *(dep: 7a)* — Script `sia_producao.py`: baixa 24 arquivos `.dbc` do FTP DATASUS, filtra por município e financiamento, agrega por procedimento/ano e persiste em tabela temporária. Ver `docs/prompt_diagnostico_subregistro.md`.
+- **7c — Consolidação e relatório de subregistro** *(dep: 7b)* — Aplica lógica de subregistro (queda > 50%, ratio = 0 sinalizado separadamente), usa valor unitário SIGTAP para gap estimado, gera CSV + sumário no stdout separando MAC e FAEC. Ver `docs/prompt_diagnostico_subregistro.md`.
+- **7d — Frontend de solicitação de diagnóstico (site DataBrasil)** *(dep: 7c)* — Página pública no site da DataBrasil com formulário (município, UF, ano de referência, email). Dispara `POST /diagnostico/subregistro` no backend FaturaSUS (Railway) via API HTTP — o banco nunca é exposto diretamente. Job roda em background (estimativa: 3–10 min, limitado pela velocidade do FTP DATASUS). Quando concluído, envia o relatório CSV por email com link de download. Serve como gerador de leads para o FaturaSUS — qualquer secretário acessa sem cadastro ou contrato. Ver `docs/prompt_diagnostico_subregistro.md`.
+- **8 — Desambiguação** *(dep: 5, 5b.1)* — **8a — ambiguidade semântica (top-3):** backend retorna top-3 candidatos quando score de confiança estiver abaixo de threshold (definir). Frontend exibe quick-reply buttons — padrão já existe no protótipo mockado. Ex: colonoscopia com/sem biópsia. **8b — detalhe faltante:** Haiku detecta quando o texto não tem informação suficiente para classificar (lateralidade, quantidade, complexidade de curativo) e devolve uma pergunta. Frontend exibe como mensagem do bot; profissional responde; backend reclassifica com contexto completo.
+- **9 — Bundle de procedimentos complementares** *(dep: 4, 5b.1)* — Ao classificar o procedimento principal, o Haiku sugere proativamente os procedimentos que tipicamente acompanham aquele tipo de atendimento (ex: pré-natal → PA, peso, altura uterina). O profissional confirma o bundle em vez de lembrar item a item. Será necessário pesquisa profunda para entendimento de quais procedimentos são complementares. Aproveita a infraestrutura do classificador com prompt específico de bundling.
+- **10 — Geração e validação do arquivo BPA** *(dep: 6, 8, 9)* — Layout magnético DATASUS, separação PAB/MAC
+- **11 — Ambiente e-SUS local (Docker)** *(dep: 10)* — Subir instância local via https://github.com/filiperochalopes/esus-pec-docker. Quando o BPA standalone estiver válido, o custo marginal de gerar o mesmo BPA a partir do PostgreSQL do PEC local é baixo — e o protótipo passa a cobrir os dois mercados. Mapeamento do schema PostgreSQL do PEC é pré-requisito (ver Investigações pendentes).
+- **11b — Extensão Chrome — assistente de preenchimento** *(dep: 11)* — Painel lateral que abre automaticamente na tela de procedimentos do PEC. Lê contexto do atendimento (CID, CBO, perfil do paciente) via API GraphQL interna do PEC (local) e entrega os diferenciais do FaturaSUS sem tirar o profissional do sistema.
+- **12 — Dashboard + drill-down** *(dep: 10)* — KPIs, correção inline pelo faturista
+- **13 — Exportação e histórico** *(dep: 10, 12)* — Consulta e reenvio de lotes
+- **14 — Múltiplos procedimentos em um único áudio** *(dep: 3, 4)* — O backend segmenta um único áudio em múltiplos procedimentos, classifica cada um separadamente e retorna para confirmação individual. Comportamento testado em campo: profissionais naturalmente descrevem mais de um procedimento no mesmo registro de voz. Otimização UX — implementar após BPA estável.
+- **15 — Cron SIGTAP diário** *(dep: 10)* — Só faz sentido automatizar após BPA validado
 
 ---
 
 ## v2 — pós-protótipo (infraestrutura)
 
-- **v2.1 — Separar frontend em serviço dedicado** *(dep: passo 12)* — Mover React para Vercel/Cloudflare Pages; remover StaticFiles do FastAPI. Ver DEC-010.
+- **v2.1 — Separar frontend em serviço dedicado** *(dep: passo 13)* — Mover React para Vercel/Cloudflare Pages; remover StaticFiles do FastAPI. Ver DEC-010.
 
 ---
 
 ## Fora do escopo atual (depende de acordo SMS)
 
-- **15 — Auth JWT + RBAC multi-tenant** *(dep: 0–14)* — Entra com o primeiro usuário real ou junto com CADSUS real
-- **15b — Onboarding de municípios clientes** *(dep: 15)* — Endpoint `POST /admin/tenants` + CLI `onboard_municipio` — persiste município no banco e dispara ingestão CNES (`cnes.py --municipios`) em background. Ver prompt deixado no fim da sessão 1b.
-- **16 — CADSUS mock isolado** *(dep: acordo SMS próximo)* — Módulo com interface idêntica ao real, retornando dados fictícios. Só faz sentido criar quando houver usuário real ou acordo SMS próximo — para demo, o paciente hardcoded basta.
-- **17 — CADSUS v5 real** *(dep: acordo SMS + 0–14)* — Substitui o mock cirurgicamente
-- **18 — RBAC — escopo de acesso por perfil de CBO** *(dep: 15, 17)* — O escopo de procedimentos visualizáveis e registráveis varia por categoria profissional (auxiliar de enfermagem, técnico, enfermeiro, médico). Depende da integração com CADSUS real (passo 17), que fornece o CNS e o CBO do profissional logado. Requisito legal — implementar junto com o onboarding do primeiro município com CADSUS ativo.
+- **16 — Auth JWT + RBAC multi-tenant** *(dep: 0–15)* — Entra com o primeiro usuário real ou junto com CADSUS real
+- **16b — Onboarding de municípios clientes** *(dep: 16)* — Endpoint `POST /admin/tenants` + CLI `onboard_municipio` — persiste município no banco e dispara ingestão CNES (`cnes.py --municipios`) em background. Ver prompt deixado no fim da sessão 1b.
+- **17 — CADSUS mock isolado** *(dep: acordo SMS próximo)* — Módulo com interface idêntica ao real, retornando dados fictícios. Só faz sentido criar quando houver usuário real ou acordo SMS próximo — para demo, o paciente hardcoded basta.
+- **18 — CADSUS v5 real** *(dep: acordo SMS + 0–15)* — Substitui o mock cirurgicamente
+- **19 — RBAC — escopo de acesso por perfil de CBO** *(dep: 16, 18)* — O escopo de procedimentos visualizáveis e registráveis varia por categoria profissional (auxiliar de enfermagem, técnico, enfermeiro, médico). Depende da integração com CADSUS real (passo 18), que fornece o CNS e o CBO do profissional logado. Requisito legal — implementar junto com o onboarding do primeiro município com CADSUS ativo.
 
 ---
 
@@ -75,7 +80,7 @@ Questões em aberto antes de iniciar v3-3:
 
 ## Investigações pendentes (resolver antes do passo indicado)
 
-- **Antes do passo 6 — Latência do pipeline:** perfilar com logs de tempo por etapa (query expansion, embedding, pgvector, classificação). Latência atual: 2–7s (meta: <5s). Candidatos a otimização: paralelizar query expansion + embedding (hoje encadeados); prompt caching em `_SYSTEM_CLASSIFY`; avaliar se fallback substring ativa desnecessariamente. Só otimizar após ter dados reais.
-- **Antes do passo 10 — Schema do PEC:** mapear schema do banco PostgreSQL do PEC contra instância Docker local (validar joins necessários para gerar BPA).
-- **Antes do passo 15 — Modelo de deploy:** definir SaaS multi-tenant (coluna `tenant_id` em tabelas operacionais) vs. instância dedicada por prefeitura (schemas separados). Impacto direto no schema do banco. Ver DEC-008.
-- **Antes do passo 16 — Hash do CNS:** definir SHA-256 vs. AES-256-GCM: SHA-256 é irreversível (não permite re-consultar o CADSUS depois); AES-256-GCM exige gestão de chave mas mantém o CNS recuperável. Ver DEC-009.
+- **Antes do passo 8 — Latência do pipeline:** perfilar com logs de tempo por etapa (query expansion, embedding, pgvector, classificação). Latência atual: 2–7s (meta: <5s). Candidatos a otimização: paralelizar query expansion + embedding (hoje encadeados); prompt caching em `_SYSTEM_CLASSIFY`; avaliar se fallback substring ativa desnecessariamente. Só otimizar após ter dados reais.
+- **Antes do passo 11 — Schema do PEC:** mapear schema do banco PostgreSQL do PEC contra instância Docker local (validar joins necessários para gerar BPA).
+- **Antes do passo 16 — Modelo de deploy:** definir SaaS multi-tenant (coluna `tenant_id` em tabelas operacionais) vs. instância dedicada por prefeitura (schemas separados). Impacto direto no schema do banco. Ver DEC-008.
+- **Antes do passo 17 — Hash do CNS:** definir SHA-256 vs. AES-256-GCM: SHA-256 é irreversível (não permite re-consultar o CADSUS depois); AES-256-GCM exige gestão de chave mas mantém o CNS recuperável. Ver DEC-009.

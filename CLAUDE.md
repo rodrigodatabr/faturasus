@@ -97,6 +97,7 @@ O protótipo frontend está hospedado na Railway:
 - ~~**Script de ingestão SIGTAP**~~ — `app/ingest/sigtap.py`; executado contra Railway: 20/20 tabelas OK, 4980 procedimentos, 194720 rl_proc_ocupacao. O classificador e o anti-glosa usam sempre `MAX(dt_competencia)` das tabelas SIGTAP — nunca a competência do registro (DEC-014, DEC-015)
 - ~~**Script de ingestão SCNES**~~ — `app/ingest/cnes.py`; filtro `--municipios` por código IBGE; ingerido para Naviraí-MS, Três Pontas-MG, Esteio-RS (903 est., 5.399 prof., 878 serv., 39 hab.)
 - ~~**Embeddings SIGTAP + busca semântica**~~ — `app/ingest/embeddings.py`; 4.980 procedimentos indexados localmente; migration `0002_ivfflat_embeddings` (IVFFlat); endpoint `GET /busca/procedimentos`. **Pendente no Railway:** rodar indexação e migration apontando para produção.
+- ~~**View de mapeamento MAC/FAEC**~~ — `vw_procedimentos_financiamento`; migration `0003_financiamento_view`; join direto em `sigtap_procedimentos.co_financiamento` (não existe tabela `rl_proc_financiamento`); `vl_unitario_sigtap = (vl_sa + vl_sp) / 100.0`. Base para o script `sia_producao.py` (7b/7c).
 - **Integração CADSUS v5** — SOAP real via barramento RNDS (sem cache persistente de pacientes; apenas cache volátil de sessão)
 - ~~**Pipeline de registro**~~ — Whisper → pgvector → Claude Haiku → validação anti-glosa → `POST /registros` persistindo em `registros_producao`
 - **Fontes de dados externas** — SIGTAP/BDSIA (cron diário), SCNES PF+HB (upload mensal), FPO (manual). Ver PRD §3.3
